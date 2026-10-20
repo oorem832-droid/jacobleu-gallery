@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Jacobleu · Personnel</title>
+<meta name="robots" content="noindex">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..900&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<div class="wrap">
+  <div id="hdr"></div>
+  <main id="app"><div class="loading">…</div></main>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<script src="assets/config.js"></script>
+<script src="assets/i18n.js"></script>
+<script src="assets/common.js"></script>
+<script>
+// Staff area: each person clocks in/out and sees only their own shifts.
+let st = { session: null, me: null, shifts: [], ready: false, busy: false };
+
+async function load() {
+  Object.assign(st, await myProfile());
+  if (st.me) {
+    const since = new Date(sod(Date.now()) - 6 * DAY).toISOString();
+    const { data } = await sb.from("shifts").select("*").eq("staff_id", st.me.id).gte("clock_in", since).order("clock_in");
+    st.shifts = (data || []).map(s => ({ in: Date.parse(s.clock_in), out: s.clock_out ? Date.parse(s.clock_out) : null }));
+  }
+  st.ready = true; render();
+}
+
+window.render = function () {
+  $("#hdr").innerHTML = header("staff");
+  const app = $("#app");
+  if (!CONFIGURED) return app.innerHTML = setupNotice();
+  if (!st.ready) return app.innerHTML = `<div class="loading">${t("loading")}</div>`;
+  if (!st.session) return app.innerHTML = `<section class="view">${loginForm("sLoginSub")}</section>`;
+  if (!st.me) return app.innerHTML = `<section class="view"><div class="card locked"><p>${t("notStaff")}</p><button class="btn ghost" data-act="out" type="button">${t("logout")}</button></div></section>`;
+
+  const now = Date.now(), open = st.shifts.find(s => !s.out);
+  const rows = [];
+  for (let d = 0; d < 7; d++) {
+    const day = sod(now) - d * DAY, sh = st.shifts.filter(s => sod(s.in) === day);
+    rows.push(`<div><span>${t("daysL")[wd(day)]} ${new Date(day).getDate()}</span><span class="num" style="color:var(--muted)">${sh.length ? sh.map(s => hm(s.in) + " – " + (s.out ? hm(s.out) : "…")).join(", ") : t("noShift")}</span></div>`);
+  }
+  const todayMs = st.shifts.filter(s => sod(s.in) === sod(now)).reduce((a, s) => a + ((s.out || now) - s.in), 0);
+  app.innerHTML = `<section class="view staffgrid">
+    <div class="card" style="display:grid;gap:16px"><div class="eyebrow">${esc(st.me.job_title || "")}</div>
+      <h2 style="font-size:28px">${esc(t("hello", { n: st.me.full_name.split(" ")[0] }))}</h2>
+      <div><span class="status ${open ? "in" : "out"}">${open ? t("onShift", { t: hm(open.in) }) : t("offShift")}</span></div>
+      <div class="clock num">${hm(now)}</div>
+      <button class="btn ${open ? "dark" : ""}" data-act="clock" type="button" ${st.busy ? "disabled" : ""}>${open ? t("clockOut") : t("clockIn")}</button>
+      <div class="rows"><div><span>${t("todayTotal")}</span><span class="num">${(todayMs / 36e5).toFixed(1)} h</span></div></div>
+      ${st.me.role === "manager" ? `<a class="btn ghost" style="text-align:center;text-decoration:none" href="admin.html">${t("goAdmin")}</a>` : ""}
+      <button class="btn ghost" data-act="out" type="button">${t("logout")}</button></div>
+    <div class="card"><h3>${t("myWeek")}</h3><p class="sub">${t("sSub")}</p><div class="rows">${rows.join("")}</div></div>
+  </section>`;
+};
+
+document.addEventListener("submit", async e => { if (e.target.id === "login" && await doLogin(e)) load(); });
+document.addEventListener("click", async e => {
+  const a = e.target.closest("[data-act]"); if (!a) return;
+  if (a.dataset.act === "out") { await sb.auth.signOut(); st.session = null; st.me = null; render(); }
+  if (a.dataset.act === "clock") {
+    const open = st.shifts.find(s => !s.out);
+    st.busy = true; render();
+    const { error } = await sb.rpc(open ? "clock_out" : "clock_in");
+    st.busy = false;
+    if (error) { toast(t("netErr")); render(); return; }
+    toast(open ? t("clockOut") + " ✓" : t("clockIn") + " ✓");
+    load();
+  }
+});
+setInterval(() => { if (st.me && !st.busy) render(); }, 30000);
+
+render();
+if (CONFIGURED) load();
+</script>
+</body>
+</html>

@@ -1,0 +1,214 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Jacobleu · Direction</title>
+<meta name="robots" content="noindex">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..900&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<div class="wrap">
+  <div id="hdr"></div>
+  <main id="app"><div class="loading">…</div></main>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<script src="assets/config.js"></script>
+<script src="assets/i18n.js"></script>
+<script src="assets/common.js"></script>
+<script>
+// Manager dashboard: only an account with role 'manager' can read the data
+// (enforced in the database, not just on this page).
+let S = { ready: false, session: null, me: null, D: null, range: 30, q: "", limit: 12, loadedAt: 0, confirmDel: null, err: "" };
+
+// Supabase returns at most 1000 rows per request, so fetch page by page.
+async function fetchAll(build) {
+  let out = [], from = 0;
+  for (;;) {
+    const { data, error } = await build().range(from, from + 999);
+    if (error) throw error;
+    out = out.concat(data);
+    if (data.length < 1000) return out;
+    from += 1000;
+  }
+}
+
+async function load() {
+  Object.assign(S, await myProfile());
+  if (S.me && S.me.role === "manager") {
+    try {
+      const since = new Date(Date.now() - 400 * DAY).toISOString();
+      const [visits, staff, shifts] = await Promise.all([
+        fetchAll(() => sb.from("visits").select("id,created_at,full_name,occupation,email,phone,purpose,whatsapp_optin").order("id")),
+        sb.from("staff").select("id,full_name,job_title,role,active").eq("active", true).order("full_name").then(r => { if (r.error) throw r.error; return r.data; }),
+        fetchAll(() => sb.from("shifts").select("staff_id,clock_in,clock_out").gte("clock_in", since).order("id"))
+      ]);
+      S.D = {
+        visits: visits.map(v => ({ id: v.id, ts: Date.parse(v.created_at), name: v.full_name, role: v.occupation, email: v.email, phone: v.phone, purpose: v.purpose, optin: v.whatsapp_optin })),
+        staff: staff.map(s => ({ id: s.id, name: s.full_name, role: s.job_title || "" })),
+        shifts: shifts.map(s => ({ sid: s.staff_id, in: Date.parse(s.clock_in), out: s.clock_out ? Date.parse(s.clock_out) : null }))
+      };
+      S.err = ""; S.loadedAt = Date.now();
+    } catch (e) { S.err = t("netErr"); }
+  }
+  S.ready = true; render();
+}
+
+const openShift = sid => S.D.shifts.find(s => s.sid === sid && !s.out);
+
+function people() {
+  const all = new Map();
+  S.D.visits.forEach(v => {
+    const p = all.get(v.phone) || { ...v, count: 0, last: 0, inRange: 0 };
+    p.count++; if (v.ts >= p.last) { p.last = v.ts; p.name = v.name; p.role = v.role || p.role; p.optin = v.optin; }
+    p.email = v.email || p.email; all.set(v.phone, p);
+  });
+  return all;
+}
+
+window.render = function () {
+  $("#hdr").innerHTML = header("admin");
+  const app = $("#app");
+  if (!CONFIGURED) return app.innerHTML = setupNotice();
+  if (!S.ready) return app.innerHTML = `<div class="loading">${t("loading")}</div>`;
+  if (!S.session) return app.innerHTML = `<section class="view">${loginForm("mLoginSub")}</section>`;
+  if (!S.me || S.me.role !== "manager") return app.innerHTML = `<section class="view"><div class="card locked"><h2 style="font-size:24px">${t("lockT")}</h2><p class="sub" style="margin:0">${t("notManager")}</p><a class="btn ghost" style="text-decoration:none" href="staff.html">${t("goStaff")}</a><button class="btn ghost" data-act="out" type="button">${t("logout")}</button></div></section>`;
+  if (!S.D) return app.innerHTML = `<div class="notice">${S.err || t("netErr")}</div>`;
+  app.innerHTML = dashboard();
+};
+
+function dashboard() {
+  const now = Date.now(), today = sod(now), D = S.D;
+  const first = D.visits.length ? sod(D.visits[0].ts) : today;
+  const start = S.range === "all" ? first : today - (S.range - 1) * DAY;
+  const nDays = Math.round((today - start) / DAY) + 1;
+  const V = D.visits.filter(v => v.ts >= start);
+  const todayV = D.visits.filter(v => v.ts >= today);
+  const inside = todayV.filter(v => now - v.ts < 2 * 36e5).length;
+  const all = people();
+  V.forEach(v => all.get(v.phone).inRange++);
+  const ppl = [...all.values()].filter(p => p.inRange > 0);
+  const returning = ppl.filter(p => p.count > 1).length;
+
+  const heat = Array.from({ length: 7 }, () => Array(16).fill(0));
+  V.forEach(v => { const h = new Date(v.ts).getHours() - OPEN; if (h >= 0 && h < 16) heat[wd(v.ts)][h]++; });
+  const dayCount = Array(7).fill(0); for (let d = start; d <= today; d += DAY) dayCount[wd(d)]++;
+  const avgW = heat.map((r, i) => dayCount[i] ? r.reduce((a, b) => a + b, 0) / dayCount[i] : 0);
+  const hourTot = Array(16).fill(0); heat.forEach(r => r.forEach((x, i) => hourTot[i] += x));
+  const peakH = hourTot.indexOf(Math.max(...hourTot)) + OPEN, busy = avgW.indexOf(Math.max(...avgW));
+  const hmax = Math.max(1, ...heat.flat()), wmax = Math.max(1, ...avgW);
+
+  const daily = []; for (let d = start; d <= today; d += DAY) daily.push({ d, n: 0 });
+  V.forEach(v => { const i = Math.round((sod(v.ts) - start) / DAY); if (daily[i]) daily[i].n++; });
+  const dmax = Math.max(...daily.map(x => x.n), 1), step = dmax > 100 ? 50 : dmax > 40 ? 20 : dmax > 10 ? 10 : 5, top = Math.ceil(dmax / step) * step;
+  const grid = []; for (let g = step; g <= top; g += step) grid.push(`<div class="grid" style="bottom:${g / top * 100}%"><span>${g}</span></div>`);
+  const fmtD = d => { const x = new Date(d); return x.getDate() + "/" + (x.getMonth() + 1); };
+
+  const pc = {}; V.forEach(v => pc[v.purpose] = (pc[v.purpose] || 0) + 1); const pmax = Math.max(1, ...Object.values(pc));
+
+  const q = S.q.toLowerCase().trim(), qd = digits(q);
+  let list = ppl.sort((a, b) => b.count - a.count || b.last - a.last);
+  if (q) list = list.filter(p => (p.name + " " + (p.email || "") + " " + (p.role || "")).toLowerCase().includes(q) || (qd.length > 2 && p.phone.includes(qd)));
+  const tag = c => c >= 4 ? `<span class="tag reg">${t("tReg")}</span>` : c > 1 ? `<span class="tag ret">${t("tRet")}</span>` : `<span class="tag new">${t("tNew")}</span>`;
+  const ago = ts => { const n = Math.round((today - sod(ts)) / DAY); return n === 0 ? t("ago0") : n === 1 ? t("ago1") : t("agoN", { n }); };
+
+  const staffRows = D.staff.map(s => {
+    const sh = D.shifts.filter(x => x.sid === s.id && x.in >= start);
+    const hrs = sh.reduce((a, x) => a + ((x.out || now) - x.in), 0) / 36e5, days = new Set(sh.map(x => sod(x.in))).size, o = openShift(s.id);
+    return `<tr><td>${esc(s.name)}<div class="m">${esc(s.role)}</div></td><td>${o ? `<span class="status in">${t("inS", { t: hm(o.in) })}</span>` : `<span class="status out">${t("outS")}</span>`}</td><td class="r">${days}</td><td class="r">${hrs.toFixed(1)}</td></tr>`;
+  }).join("");
+  const opted = [...all.values()].filter(p => p.optin);
+
+  const head = `<div class="mhead"><div><div class="eyebrow">${t("manager")} · ${t("updated", { t: hm(S.loadedAt) })}</div><h2>${t("mTitle")}</h2></div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center"><div class="seg">${[[7, "r7"], [30, "r30"], ["all", "rAll"]].map(([v, k]) => `<button type="button" data-range="${v}" aria-pressed="${S.range == v}">${t(k)}</button>`).join("")}</div>
+    <button class="btn ghost" style="padding:7px 14px;font-size:13px" data-act="refresh" type="button">${t("refresh")}</button>
+    <button class="btn ghost" style="padding:7px 14px;font-size:13px" data-act="out" type="button">${t("logout")}</button></div></div>`;
+
+  if (!D.visits.length) return `<section class="view">${head}<div class="card empty">${t("noVisits")}<br><br><a class="btn" style="text-decoration:none" href="poster.html">${t("printPoster")}</a></div>
+    <div class="card" style="margin-top:20px"><h3>${t("staffAtt")}</h3><div class="tablewrap"><table style="min-width:440px"><thead><tr><th>${t("cName")}</th><th>${t("cNow")}</th><th class="r">${t("cDays")}</th><th class="r">${t("cHours")}</th></tr></thead><tbody>${staffRows}</tbody></table></div></div></section>`;
+
+  return `<section class="view">${head}
+  <div class="kpis">
+    <div class="kpi hl"><div class="l">${t("kToday")}</div><div class="v">${todayV.length}</div><div class="s">${t("kTodaySub", { n: inside })}</div></div>
+    <div class="kpi"><div class="l">${t("kVisits")}</div><div class="v">${V.length.toLocaleString()}</div><div class="s">${t("kPerDay", { n: (V.length / nDays).toFixed(1) })}</div></div>
+    <div class="kpi"><div class="l">${t("kPeople")}</div><div class="v">${ppl.length}</div><div class="s">${t("kRet", { n: ppl.length ? Math.round(returning / ppl.length * 100) : 0 })}</div></div>
+    <div class="kpi"><div class="l">${t("kPeak")}</div><div class="v">${V.length ? `${peakH}h – ${peakH + 1}h` : "—"}</div><div class="s">${V.length ? t("kPeakSub", { d: t("daysL")[busy] }) : ""}</div></div>
+  </div>
+  <div class="mgrid">
+    <div class="card"><h3>${t("daily")}</h3><p class="sub">${t("dailySub")}</p>
+      <div class="daily">${grid.join("")}${daily.map(x => { const w = wd(x.d); return `<div class="b ${w >= 4 ? "we" : "wd"}" style="height:${x.n / top * 100}%" title="${t("daysL")[w]} ${fmtD(x.d)} · ${x.n}"></div>`; }).join("")}</div>
+      <div class="axis"><span>${fmtD(start)}</span><span>${fmtD(today)}</span></div>
+      <div class="legend"><span><i></i>${t("weekend")}</span><span><i class="wd"></i>${t("weekday")}</span></div></div>
+    <div class="card"><h3>${t("week")}</h3><p class="sub">${t("weekSub")}</p>
+      <div class="hbars">${avgW.map((a, i) => `<div class="hbar ${i === busy ? "top" : ""}"><span>${t("days")[i]}</span><div class="t"><i style="width:${a / wmax * 100}%"></i></div><span class="n">${a.toFixed(a < 10 ? 1 : 0)}</span></div>`).join("")}</div>
+      <h3 style="margin-top:22px">${t("purpose")}</h3>
+      <div class="hbars" style="margin-top:10px">${["expo", "show", "cowork", "event"].map(k => `<div class="hbar" style="grid-template-columns:88px minmax(0,1fr) 44px"><span>${t("p_" + k)}</span><div class="t"><i style="width:${(pc[k] || 0) / pmax * 100}%"></i></div><span class="n">${pc[k] || 0}</span></div>`).join("")}</div></div>
+  </div>
+  <div class="card" style="margin-bottom:20px"><h3>${t("heat")}</h3><p class="sub">${t("heatSub")}</p>
+    <div class="heatwrap"><div class="heat"><div></div>${Array.from({ length: 16 }, (_, i) => `<div class="h">${i + OPEN}h</div>`).join("")}
+    ${heat.map((r, d) => `<div class="d">${t("days")[d]}</div>` + r.map((x, h) => { const p = Math.round(x / hmax * 100); return `<div class="c num" title="${t("daysL")[d]} ${h + OPEN}h · ${x}" style="background:color-mix(in srgb,var(--bleu) ${p}%,var(--wall));color:${p > 55 ? "var(--bleu-ink)" : "var(--muted)"}">${x || ""}</div>`; }).join("")).join("")}</div></div>
+    <div class="scale">${t("few")}<span class="bar"></span>${t("many")}</div></div>
+  <div class="card" style="margin-bottom:20px"><div class="tools"><div><h3>${t("people")}</h3><p class="sub" style="margin:0">${t("peopleSub")}</p></div><input id="m-q" type="text" placeholder="${t("search")}" value="${esc(S.q)}"></div>
+    <div class="tablewrap"><table><thead><tr><th>${t("cName")}</th><th>${t("cContact")}</th><th class="r">${t("cVisits")}</th><th>${t("cLast")}</th><th>${t("cStatus")}</th><th></th></tr></thead><tbody>
+    ${list.slice(0, S.limit).map(p => `<tr><td>${esc(p.name)}<div class="m">${esc(p.role || "")}</div></td><td><span class="num">${fmtPhone(p.phone)}</span><div class="m">${esc(p.email || "—")}</div></td><td class="r">${p.count}</td><td>${ago(p.last)}<div class="m">${hm(p.last)}</div></td><td>${tag(p.count)}</td><td><button class="del" type="button" data-del="${esc(p.phone)}" data-name="${esc(p.name)}">${S.confirmDel === p.phone ? t("confirmDelete", { n: esc(p.name) }) : t("deleteVisitor")}</button></td></tr>`).join("")}
+    </tbody></table></div>${list.length > S.limit ? `<button class="btn ghost more" data-act="more" type="button">${t("showMore")} (${list.length - S.limit})</button>` : ""}</div>
+  <div class="mgrid">
+    <div class="card"><h3>${t("staffAtt")}</h3><p class="sub">${t("staffAttSub")}</p><div class="tablewrap"><table style="min-width:440px"><thead><tr><th>${t("cName")}</th><th>${t("cNow")}</th><th class="r">${t("cDays")}</th><th class="r">${t("cHours")}</th></tr></thead><tbody>${staffRows}</tbody></table></div></div>
+    <div class="card wa"><div><h3>${t("wa")}</h3><p class="sub" style="margin:0">${t("waSub", { n: opted.length })}</p></div>
+      <div class="row"><button class="btn" data-act="copyNums" type="button">${t("copyNums")}</button><button class="btn ghost" data-act="csv" type="button">${t("downloadCsv")}</button></div>
+      <textarea id="m-out" readonly aria-label="export">${esc(opted.slice(0, 6).map(p => "+" + p.phone).join(", "))}${opted.length > 6 ? ", …" : ""}</textarea>
+      <p class="sub" style="margin:0">${t("waNote")}</p></div>
+  </div>
+  <p class="hint">${t("footnote")}</p></section>`;
+}
+
+function csvAll() {
+  const rows = [...people().values()].sort((a, b) => b.count - a.count);
+  const q = x => '"' + String(x ?? "").replace(/"/g, '""') + '"';
+  return "﻿name,occupation,phone,email,visits,last_visit,whatsapp_optin\n" +
+    rows.map(p => [p.name, p.role, "+" + p.phone, p.email, p.count, new Date(p.last).toISOString().slice(0, 16).replace("T", " "), p.optin ? "yes" : "no"].map(q).join(",")).join("\n");
+}
+
+document.addEventListener("submit", async e => { if (e.target.id === "login" && await doLogin(e)) { S.ready = false; render(); load(); } });
+document.addEventListener("click", async e => {
+  const r = e.target.closest("[data-range]");
+  if (r) { S.range = r.dataset.range === "all" ? "all" : +r.dataset.range; S.limit = 12; render(); return; }
+  const del = e.target.closest("[data-del]");
+  if (del) {
+    const ph = del.dataset.del;
+    if (S.confirmDel !== ph) { S.confirmDel = ph; render(); return; }
+    const { error } = await sb.from("visits").delete().eq("phone", ph);
+    S.confirmDel = null;
+    if (error) { toast(t("netErr")); render(); return; }
+    S.D.visits = S.D.visits.filter(v => v.phone !== ph); toast(t("deleted")); render(); return;
+  }
+  const a = e.target.closest("[data-act]"); if (!a) return;
+  const act = a.dataset.act;
+  if (act === "out") { await sb.auth.signOut(); S.session = null; S.me = null; S.D = null; render(); }
+  if (act === "refresh") load();
+  if (act === "more") { S.limit += 20; render(); }
+  if (act === "copyNums") {
+    const nums = [...people().values()].filter(p => p.optin).map(p => "+" + p.phone).join(", ");
+    const ta = $("#m-out"); ta.value = nums;
+    navigator.clipboard.writeText(nums).then(() => toast(t("copied")), () => { ta.focus(); ta.select(); toast(t("copyFail")); });
+  }
+  if (act === "csv") {
+    const url = URL.createObjectURL(new Blob([csvAll()], { type: "text/csv;charset=utf-8" }));
+    const link = document.createElement("a"); link.href = url; link.download = "jacobleu-visiteurs-" + new Date().toISOString().slice(0, 10) + ".csv";
+    document.body.appendChild(link); link.click(); link.remove(); setTimeout(() => URL.revokeObjectURL(url), 2000);
+  }
+});
+document.addEventListener("input", e => {
+  if (e.target.id === "m-q") { S.q = e.target.value; S.limit = 12; const pos = e.target.selectionStart; render(); const i = $("#m-q"); i.focus(); i.setSelectionRange(pos, pos); }
+});
+// Refresh the numbers every 2 minutes while the page is open
+setInterval(() => { if (S.D && document.visibilityState === "visible" && document.activeElement?.id !== "m-q") load(); }, 120000);
+
+render();
+if (CONFIGURED) load();
+</script>
+</body>
+</html>

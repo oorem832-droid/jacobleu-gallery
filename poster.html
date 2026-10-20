@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Jacobleu · Affiche QR</title>
+<meta name="robots" content="noindex">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..900&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="assets/style.css">
+<style>
+  .poster.big{max-width:760px;margin:24px auto;text-align:left}
+  .poster.big .qr{width:300px;height:300px}
+  .poster.big .qr img,.poster.big .qr canvas{width:272px!important;height:272px!important}
+  @media print{ .poster.big{margin:0 auto;max-width:none} .poster.big h2{font-size:64px} }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div id="hdr"></div>
+  <main id="app"></main>
+</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<script src="assets/config.js"></script>
+<script src="assets/i18n.js"></script>
+<script src="assets/common.js"></script>
+<script>
+// Printable poster for the entrance. The QR code opens the visitor sign-in page.
+const target = CFG.CHECKIN_URL || new URL("./", location.href).href;
+
+window.render = function () {
+  $("#hdr").innerHTML = header("poster");
+  $("#app").innerHTML = `
+    <div class="no-print" style="display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between;padding-top:18px">
+      <p class="small" style="margin:0">${t("posterHelp")} <span class="num" style="color:var(--ink)">${esc(target)}</span></p>
+      <button class="btn" id="print" type="button">${t("printPoster")}</button></div>
+    <div class="poster big">
+      <div class="eyebrow">${t("pKick")}</div>
+      <h2>${t("pTitle")}</h2>
+      <div class="qrrow"><div class="qr" id="qr" aria-label="QR code"></div>
+        <ul><li>${t("p1")}</li><li>${t("p2")}</li><li>${t("p3")}</li></ul></div>
+      <div class="foot">${t("pFoot")}<br>jacobleu@jacobleu.art · +225 07 98 28 64 50</div>
+    </div>`;
+  if (typeof QRCode === "undefined") { $("#qr").innerHTML = `<p class="small">${t("netErr")}</p>`; return; }
+  new QRCode($("#qr"), { text: target, width: 272, height: 272, colorDark: "#13151C", colorLight: "#FFFFFF", correctLevel: QRCode.CorrectLevel.M });
+};
+document.addEventListener("click", e => { if (e.target.id === "print") window.print(); });
+render();
+</script>
+</body>
+</html>
