@@ -9,8 +9,8 @@
 // NEVER put the "secret" or "service_role" key here.
 // =====================================================================
 window.JACOBLEU_CONFIG = {
-  SUPABASE_URL: "https://YOUR-PROJECT-ID.supabase.co",
-  SUPABASE_KEY: "YOUR-PUBLISHABLE-OR-ANON-KEY",
+  SUPABASE_URL: "https://rynfqxcchfsoemuiyurk.supabase.co",
+  SUPABASE_KEY: "sb_publishable_AjRvfaUoxgBHHmH-Wn9Lrw_9DhOrPwz",
 
   // The address of the visitor sign-in page (the QR code points here).
   // Leave empty to use the address the site is opened from.
