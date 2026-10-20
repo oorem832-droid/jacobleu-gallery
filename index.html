@@ -22,51 +22,91 @@
 <script>
 // Visitor sign-in page: this is where the QR code at the entrance leads.
 let done = null, busy = false;
+const MEM = "jacobleu-visitor";
+const remembered = () => { try { return JSON.parse(localStorage.getItem(MEM) || "null"); } catch (e) { return null; } };
+let mem = remembered();
+
+const ICON = {
+  contact: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-6 8-6s8 2 8 6"/><path d="M19 3v4M17 5h4"/></svg>',
+  chat: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a8.5 8.5 0 0 1-12.6 7.4L3 21l1.6-5.2A8.5 8.5 0 1 1 21 12z"/></svg>',
+  bell: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 1 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10 21h4"/></svg>',
+  camera: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.5" cy="6.5" r="1" fill="currentColor"/></svg>',
+  play: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="4"/><path d="M10 9l5 3-5 3z" fill="currentColor"/></svg>'
+};
+
+function thanksScreen() {
+  const C = CFG, items = [];
+  if (C.WHATSAPP_NUMBER) items.push(`<button class="lk primary" type="button" id="vcard">${ICON.contact}<span>${t("saveContact")}<small>${t("saveContactSub")}</small></span></button>`);
+  if (C.WHATSAPP_CHANNEL_URL) items.push(`<a class="lk" href="${esc(C.WHATSAPP_CHANNEL_URL)}" target="_blank" rel="noopener">${ICON.bell}<span>${t("waChannel")}</span></a>`);
+  if (C.WHATSAPP_NUMBER) items.push(`<a class="lk" href="https://wa.me/${esc(C.WHATSAPP_NUMBER)}?text=${encodeURIComponent(t("waHello"))}" target="_blank" rel="noopener">${ICON.chat}<span>${t("waChat")}<small>${fmtPhone(C.WHATSAPP_NUMBER)}</small></span></a>`);
+  if (C.INSTAGRAM_URL) items.push(`<a class="lk" href="${esc(C.INSTAGRAM_URL)}" target="_blank" rel="noopener">${ICON.camera}<span>${t("insta")}<small>@${esc(C.INSTAGRAM_URL.replace(/\/+$/, "").split("/").pop())}</small></span></a>`);
+  if (C.YOUTUBE_URL) items.push(`<a class="lk" href="${esc(C.YOUTUBE_URL)}" target="_blank" rel="noopener">${ICON.play}<span>${t("youtube")}</span></a>`);
+  return `<div class="thanks"><div class="big">${done.n > 1 ? done.n : "✓"}</div>
+      <h3>${esc(t("thanks", { n: done.first }))}</h3>
+      <p style="margin:0;color:var(--muted)">${done.n > 1 ? t("visitN", { n: done.n }) : t("first")}</p>
+      ${items.length ? `<div class="links"><h4>${t("stayTitle")}</h4>${items.join("")}</div>` : ""}
+      <p class="small" style="margin:6px 0 0">${t("goodVisit")}</p></div>`;
+}
 
 window.render = function () {
   $("#hdr").innerHTML = header("checkin", false);
   const p = ["expo", "show", "cowork", "event"];
-  const body = done
-    ? `<div class="thanks"><div class="big">${done.n > 1 ? done.n : "✓"}</div>
-        <h3>${esc(t("thanks", { n: done.first }))}</h3>
-        <p style="margin:0;color:var(--muted)">${done.n > 1 ? t("visitN", { n: done.n }) : t("first")}</p>
-        <button class="btn ghost" id="again" type="button">${t("next")}</button></div>`
+  const v = mem || {};
+  const body = done ? thanksScreen()
     : `<form id="ci" novalidate>
-        <label for="f-name">${t("fName")}<input id="f-name" type="text" autocomplete="name" placeholder="Kouassi Aya" required></label>
-        <label for="f-role">${t("fRole")}<input id="f-role" type="text" autocomplete="organization-title" placeholder="Architecte"></label>
-        <label for="f-phone">${t("fPhone")}<input id="f-phone" type="tel" inputmode="tel" autocomplete="tel" placeholder="07 98 28 64 50" required></label>
-        <label for="f-email">${t("fEmail")}<input id="f-email" type="email" autocomplete="email" placeholder="aya.kouassi@gmail.com"></label>
+        ${mem ? `<div class="prefill"><span><b>${esc(t("welcomeBack", { n: (mem.name || "").split(" ").slice(-1)[0] }))}</b><br>${t("prefillNote")}</span><button type="button" id="notme">${t("notMe")}</button></div>` : ""}
+        <label for="f-name">${t("fName")}<input id="f-name" type="text" autocomplete="name" placeholder="Kouassi Aya" value="${esc(v.name || "")}" required></label>
+        <label for="f-role">${t("fRole")}<input id="f-role" type="text" autocomplete="organization-title" placeholder="Architecte" value="${esc(v.role || "")}"></label>
+        <label for="f-phone">${t("fPhone")}<input id="f-phone" type="tel" inputmode="tel" autocomplete="tel" placeholder="07 98 28 64 50" value="${esc(v.phone || "")}" required></label>
+        <label for="f-email">${t("fEmail")}<input id="f-email" type="email" autocomplete="email" placeholder="aya.kouassi@gmail.com" value="${esc(v.email || "")}"></label>
         <div style="display:grid;gap:6px"><span style="font-size:13px;font-weight:500">${t("fPurpose")}</span>
           <div class="chips">${p.map((x, i) => `<label><input type="radio" name="purpose" id="f-p-${x}" value="${x}" ${i === 0 ? "checked" : ""}><span>${t("p_" + x)}</span></label>`).join("")}</div></div>
-        <label class="check" for="f-optin"><input id="f-optin" type="checkbox"><span>${t("optin")}</span></label>
+        <label class="check" for="f-optin"><input id="f-optin" type="checkbox" ${v.optin ? "checked" : ""}><span>${t("optin")}</span></label>
         <div class="err" id="ferr" role="alert"></div>
         <button class="btn" type="submit" ${CONFIGURED ? "" : "disabled"}>${t("submit")}</button>
         <p class="small" style="margin:0">${t("privacy")}</p>
       </form>`;
   $("#app").innerHTML = `${CONFIGURED ? "" : setupNotice()}
-    <div class="phone solo"><div class="eyebrow">${t("welcome")} · Jacobleu Art Gallery</div><h3>${t("formTitle")}</h3>${body}</div>`;
+    <div class="phone solo"><div class="eyebrow">${t("welcome")} · Jacobleu Art Gallery</div>${done ? "" : `<h3>${t("formTitle")}</h3>`}${body}</div>`;
 };
+
+function saveContact() {
+  const C = CFG, tel = "+" + digits(C.WHATSAPP_NUMBER);
+  const card = ["BEGIN:VCARD", "VERSION:3.0", "N:;" + C.GALLERY_NAME + ";;;", "FN:" + C.GALLERY_NAME, "ORG:" + C.GALLERY_NAME,
+    "TEL;TYPE=CELL,VOICE:" + tel, C.EMAIL ? "EMAIL:" + C.EMAIL : "", C.INSTAGRAM_URL ? "URL:" + C.INSTAGRAM_URL : "",
+    C.ADDRESS ? "ADR;TYPE=WORK:;;" + C.ADDRESS.replace(/,/g, "\\,") + ";;;;Côte d'Ivoire" : "", "END:VCARD"].filter(Boolean).join("\r\n");
+  const url = URL.createObjectURL(new Blob([card], { type: "text/vcard;charset=utf-8" }));
+  const a = document.createElement("a"); a.href = url; a.download = "Jacobleu-Art-Gallery.vcf";
+  document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 4000);
+}
 
 document.addEventListener("submit", async e => {
   if (e.target.id !== "ci" || busy) return;
   e.preventDefault();
-  const name = $("#f-name").value.trim(), email = $("#f-email").value.trim(), phone = digits($("#f-phone").value);
+  const name = $("#f-name").value.trim(), role = $("#f-role").value.trim(), email = $("#f-email").value.trim(), phone = digits($("#f-phone").value);
+  const optin = $("#f-optin").checked;
   const err = $("#ferr"); err.textContent = "";
   if (name.length < 2) return err.textContent = t("errName");
   if (phone.length < 8 || phone.length > 15) return err.textContent = t("errPhone");
   if (email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return err.textContent = t("errEmail");
   busy = true; e.target.querySelector("button[type=submit]").disabled = true;
   const { data, error } = await sb.rpc("check_in", {
-    p_name: name, p_occupation: $("#f-role").value.trim(), p_email: email, p_phone: phone,
+    p_name: name, p_occupation: role, p_email: email, p_phone: phone,
     p_purpose: (document.querySelector("input[name=purpose]:checked") || {}).value || "expo",
-    p_optin: $("#f-optin").checked
+    p_optin: optin
   });
   busy = false;
   if (error) { err.textContent = t("netErr"); e.target.querySelector("button[type=submit]").disabled = false; return; }
+  // Remember on this phone so next visit is one tap
+  mem = { name, role, email, phone: $("#f-phone").value.trim(), optin };
+  try { localStorage.setItem(MEM, JSON.stringify(mem)); } catch (x) {}
   done = { first: name.split(" ").slice(-1)[0], n: data || 1 };
-  render();
+  render(); window.scrollTo(0, 0);
 });
-document.addEventListener("click", e => { if (e.target.id === "again") { done = null; render(); $("#f-name").focus(); } });
+document.addEventListener("click", e => {
+  if (e.target.closest("#vcard")) saveContact();
+  if (e.target.id === "notme") { mem = null; try { localStorage.removeItem(MEM); } catch (x) {} render(); $("#f-name").focus(); }
+});
 
 render();
 </script>
