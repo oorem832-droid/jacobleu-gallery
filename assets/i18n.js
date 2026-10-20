@@ -73,3 +73,25 @@ Object.assign(window.T.en,{
   deleteVisitor:"Delete",confirmDelete:"Delete all visits from {n}? Click again to confirm.",deleted:"Data deleted",
   privacy:"Your details are used only by Jacobleu Art Gallery and are never sold."
 });
+
+// Thank-you screen and remembered visitor
+Object.assign(window.T.fr,{
+  stayTitle:"Restons en contact",
+  saveContact:"Enregistrer notre numéro",saveContactSub:"Indispensable pour recevoir nos annonces WhatsApp",
+  waChat:"Nous écrire sur WhatsApp",waChannel:"Suivre notre chaîne WhatsApp",
+  insta:"Suivre sur Instagram",youtube:"Voir nos vidéos sur YouTube",
+  goodVisit:"Bonne visite ! Vous pouvez fermer cette page.",
+  welcomeBack:"Bon retour, {n} !",notMe:"Ce n'est pas moi",
+  prefillNote:"Vos informations sont pré-remplies. Vérifiez et touchez « Je m'enregistre ».",
+  waHello:"Bonjour Jacobleu Art Gallery, je viens de visiter la galerie."
+});
+Object.assign(window.T.en,{
+  stayTitle:"Stay in touch",
+  saveContact:"Save our number",saveContactSub:"Needed to receive our WhatsApp announcements",
+  waChat:"Message us on WhatsApp",waChannel:"Follow our WhatsApp channel",
+  insta:"Follow on Instagram",youtube:"Watch our videos on YouTube",
+  goodVisit:"Enjoy your visit! You can close this page.",
+  welcomeBack:"Welcome back, {n}!",notMe:"Not me",
+  prefillNote:"Your details are filled in. Check them and tap “Check in”.",
+  waHello:"Hello Jacobleu Art Gallery, I just visited the gallery."
+});
