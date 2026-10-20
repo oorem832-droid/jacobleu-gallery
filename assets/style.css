@@ -184,3 +184,13 @@ body{padding-top:env(safe-area-inset-top,0px)}
   .poster{border:0;padding:0}
   .print-only{display:block}
 }
+/* thank-you links */
+.links{display:grid;gap:8px;text-align:left;margin-top:6px}
+.links h4{margin:6px 0 2px;font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);font-weight:600}
+.lk{display:flex;align-items:center;gap:12px;padding:12px 14px;border:1px solid var(--line);border-radius:12px;text-decoration:none;color:var(--ink);background:var(--wall);font-weight:500;cursor:pointer;font-size:15px;width:100%;text-align:left}
+.lk:hover{border-color:var(--bleu)}
+.lk.primary{background:var(--bleu);border-color:var(--bleu);color:var(--bleu-ink)}
+.lk svg{width:22px;height:22px;flex:none}
+.lk small{display:block;font-weight:400;font-size:12px;opacity:.8}
+.prefill{display:flex;justify-content:space-between;gap:10px;align-items:center;background:var(--bleu-soft);color:var(--bleu);padding:10px 12px;border-radius:10px;font-size:13px}
+.prefill button{background:none;border:0;color:inherit;text-decoration:underline;cursor:pointer;font-size:13px;padding:0;flex:none}
