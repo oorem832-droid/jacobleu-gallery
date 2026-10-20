@@ -1,6 +1,6 @@
 // =====================================================================
 // THE ONLY FILE YOU NEED TO EDIT
-// Find these two values in Supabase → Project Settings → API Keys
+// Find the two Supabase values in Supabase → Project Settings → API Keys
 // (or the "Connect" button at the top of your project).
 //
 // Use the PUBLISHABLE key (starts with sb_publishable_) or the legacy
@@ -14,5 +14,15 @@ window.JACOBLEU_CONFIG = {
 
   // The address of the visitor sign-in page (the QR code points here).
   // Leave empty to use the address the site is opened from.
-  CHECKIN_URL: ""
+  CHECKIN_URL: "",
+
+  // Shown on the thank-you screen after a visitor signs in.
+  // Leave a value empty ("") to hide that button.
+  GALLERY_NAME: "Jacobleu Art Gallery",
+  WHATSAPP_NUMBER: "2250798286450",          // digits only, with 225
+  WHATSAPP_CHANNEL_URL: "",                  // e.g. "https://whatsapp.com/channel/XXXX" once the channel exists
+  INSTAGRAM_URL: "https://www.instagram.com/jacobleuartgallery/",
+  YOUTUBE_URL: "",                           // e.g. "https://www.youtube.com/@jacobleuartgallery"
+  EMAIL: "jacobleu@jacobleu.art",
+  ADDRESS: "Abidjan Plateau, Bd Latrille, Carrefour Las Palmas"
 };
