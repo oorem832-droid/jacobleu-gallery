@@ -16,7 +16,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..900&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
-<link rel="stylesheet" href="assets/style.css">
+<link rel="stylesheet" href="assets/style.css?v=7">
 </head>
 <body>
 <div class="wrap">
@@ -24,10 +24,10 @@
   <main id="app"><div class="loading">…</div></main>
 </div>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
-<script src="assets/config.js"></script>
-<script src="assets/i18n.js"></script>
-<script src="assets/common.js"></script>
-<script src="assets/bookings-lib.js"></script>
+<script src="assets/config.js?v=7"></script>
+<script src="assets/i18n.js?v=7"></script>
+<script src="assets/common.js?v=7"></script>
+<script src="assets/bookings-lib.js?v=7"></script>
 <script>
 // Manager dashboard: only an account with role 'manager' can read the data
 // (enforced in the database, not just on this page).
@@ -113,12 +113,15 @@ function dashboard() {
   const ppl = [...all.values()].filter(p => p.inRange > 0);
   const returning = ppl.filter(p => p.count > 1).length;
 
-  const heat = Array.from({ length: 7 }, () => Array(16).fill(0));
-  V.forEach(v => { const h = new Date(v.ts).getHours() - OPEN; if (h >= 0 && h < 16) heat[wd(v.ts)][h]++; });
+  // Opening days only (Mon = 0 … Sun = 6), hours 9h → 20h (last arrival before 21h)
+  const openW = OPEN_DAYS.map(g => (g + 6) % 7).sort((a, b) => a - b);
+  const heat = Array.from({ length: 7 }, () => Array(NH).fill(0));
+  V.forEach(v => { const h = new Date(v.ts).getHours() - OPEN; if (h >= 0 && h < NH) heat[wd(v.ts)][h]++; });
   const dayCount = Array(7).fill(0); for (let d = start; d <= today; d += DAY) dayCount[wd(d)]++;
   const avgW = heat.map((r, i) => dayCount[i] ? r.reduce((a, b) => a + b, 0) / dayCount[i] : 0);
-  const hourTot = Array(16).fill(0); heat.forEach(r => r.forEach((x, i) => hourTot[i] += x));
-  const peakH = hourTot.indexOf(Math.max(...hourTot)) + OPEN, busy = avgW.indexOf(Math.max(...avgW));
+  const hourTot = Array(NH).fill(0); heat.forEach(r => r.forEach((x, i) => hourTot[i] += x));
+  const busy = openW.reduce((b, i) => avgW[i] > avgW[b] ? i : b, openW[0]);
+  const peakH = hourTot.indexOf(Math.max(...hourTot)) + OPEN;
   const hmax = Math.max(1, ...heat.flat()), wmax = Math.max(1, ...avgW);
 
   const daily = []; for (let d = start; d <= today; d += DAY) daily.push({ d, n: 0 });
@@ -144,6 +147,7 @@ function dashboard() {
 
   const head = `<div class="mhead"><div><div class="eyebrow">${t("manager")} · ${t("updated", { t: hm(S.loadedAt) })}</div><h2>${t("mTitle")}</h2></div>
     <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center"><div class="seg">${[[7, "r7"], [30, "r30"], ["all", "rAll"]].map(([v, k]) => `<button type="button" data-range="${v}" aria-pressed="${S.range == v}">${t(k)}</button>`).join("")}</div>
+    <a class="btn ghost" style="padding:7px 14px;font-size:13px;text-decoration:none;display:inline-flex;align-items:center" href="poster.html">${t("posterBtn")}</a>
     <button class="btn ghost" style="padding:7px 14px;font-size:13px" data-act="refresh" type="button">${t("refresh")}</button>
     <button class="btn ghost" style="padding:7px 14px;font-size:13px" data-act="out" type="button">${t("logout")}</button></div></div>`;
 
@@ -163,14 +167,14 @@ function dashboard() {
       <div class="axis"><span>${fmtD(start)}</span><span>${fmtD(today)}</span></div>
       <div class="legend"><span><i></i>${t("weekend")}</span><span><i class="wd"></i>${t("weekday")}</span></div></div>
     <div class="card"><h3>${t("week")}</h3><p class="sub">${t("weekSub")}</p>
-      <div class="hbars">${avgW.map((a, i) => `<div class="hbar ${i === busy ? "top" : ""}"><span>${t("days")[i]}</span><div class="t"><i style="width:${a / wmax * 100}%"></i></div><span class="n">${a.toFixed(a < 10 ? 1 : 0)}</span></div>`).join("")}</div>
+      <div class="hbars">${openW.map(i => [avgW[i], i]).map(([a, i]) => `<div class="hbar ${i === busy ? "top" : ""}"><span>${t("days")[i]}</span><div class="t"><i style="width:${a / wmax * 100}%"></i></div><span class="n">${a.toFixed(a < 10 ? 1 : 0)}</span></div>`).join("")}</div>
       <h3 style="margin-top:22px">${t("purpose")}</h3>
       <div class="hbars" style="margin-top:10px">${["expo", "show", "cowork", "event"].map(k => `<div class="hbar" style="grid-template-columns:88px minmax(0,1fr) 44px"><span>${t("p_" + k)}</span><div class="t"><i style="width:${(pc[k] || 0) / pmax * 100}%"></i></div><span class="n">${pc[k] || 0}</span></div>`).join("")}</div></div>
   </div>
   ${bookingsSection(start, today)}
   <div class="card" style="margin-bottom:20px"><h3>${t("heat")}</h3><p class="sub">${t("heatSub")}</p>
-    <div class="heatwrap"><div class="heat"><div></div>${Array.from({ length: 16 }, (_, i) => `<div class="h">${i + OPEN}h</div>`).join("")}
-    ${heat.map((r, d) => `<div class="d">${t("days")[d]}</div>` + r.map((x, h) => { const p = Math.round(x / hmax * 100); return `<div class="c num" title="${t("daysL")[d]} ${h + OPEN}h · ${x}" style="background:color-mix(in srgb,var(--bleu) ${p}%,var(--wall));color:${p > 55 ? "var(--bleu-ink)" : "var(--muted)"}">${x || ""}</div>`; }).join("")).join("")}</div></div>
+    <div class="heatwrap"><div class="heat" style="grid-template-columns:42px repeat(${NH},minmax(34px,1fr));min-width:${42 + NH * 38}px"><div></div>${Array.from({ length: NH }, (_, i) => `<div class="h">${i + OPEN}h</div>`).join("")}
+    ${openW.map(d => [heat[d], d]).map(([r, d]) => `<div class="d">${t("days")[d]}</div>` + r.map((x, h) => { const p = Math.round(x / hmax * 100); return `<div class="c num" title="${t("daysL")[d]} ${h + OPEN}h · ${x}" style="background:color-mix(in srgb,var(--bleu) ${p}%,var(--wall));color:${p > 55 ? "var(--bleu-ink)" : "var(--muted)"}">${x || ""}</div>`; }).join("")).join("")}</div></div>
     <div class="scale">${t("few")}<span class="bar"></span>${t("many")}</div></div>
   <div class="card" style="margin-bottom:20px"><div class="tools"><div><h3>${t("people")}</h3><p class="sub" style="margin:0">${t("peopleSub")}</p></div><input id="m-q" type="text" placeholder="${t("search")}" value="${esc(S.q)}"></div>
     <div class="tablewrap"><table class="stack visitors"><thead><tr><th>${t("cName")}</th><th>${t("cContact")}</th><th class="r">${t("cVisits")}</th><th>${t("cLast")}</th><th>${t("cStatus")}</th><th></th></tr></thead><tbody>
@@ -217,8 +221,8 @@ function bookingsSection(start, today) {
       <div><h3 style="font-size:15px;margin-bottom:10px">${t("byRoom")}</h3>
         <div class="hbars">${per.map(x => `<div class="hbar" style="grid-template-columns:minmax(0,130px) minmax(0,1fr) 96px"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(x.r.name.replace(/ \(.*\)/, ""))}</span><div class="t"><i style="width:${x.v / pmax * 100}%"></i></div><span class="n">${num(x.v)}</span></div>`).join("")}</div></div>
     </div>
-    ${top.length ? `<div style="margin-top:18px"><div class="tools" style="margin-bottom:6px"><div><h3 style="font-size:15px">${t("topClients")}</h3><p class="sub" style="margin:0">${t("topClientsSub")}</p></div><a class="btn ghost" style="text-decoration:none;padding:8px 14px;font-size:13px" href="clients.html">${t("clients")}</a></div>
-      <div class="rows">${top.map(({ c, st }) => `<div><span><a href="clients.html#c${c.id}" style="color:var(--ink)">${esc(c.org || c.name)}</a><span class="small"> · ${nBook(st.count)} · ${st.months} ${LANG === "en" ? "month(s)" : "mois"} · <span class="pill ${st.tag}" style="font-size:11px;padding:1px 8px">${t("t_" + st.tag)}</span></span></span><span class="num">${fcfa(st.total)}</span></div>`).join("")}</div></div>` : ""}
+    ${`<div style="margin-top:18px"><div class="tools" style="margin-bottom:6px"><div><h3 style="font-size:15px">${t("topClients")}</h3><p class="sub" style="margin:0">${t("topClientsSub")}</p></div><a class="btn ghost" style="text-decoration:none;padding:8px 14px;font-size:13px" href="clients.html">${t("clients")} (${(S.BK.clients || []).length})</a></div>
+      ${!top.length ? `<p class="small" style="margin:6px 0 0">${t("noClients")}</p>` : ""}<div class="rows">${top.map(({ c, st }) => `<div><span><a href="clients.html#c${c.id}" style="color:var(--ink)">${esc(c.org || c.name)}</a><span class="small"> · ${nBook(st.count)} · ${st.months} ${LANG === "en" ? "month(s)" : "mois"} · <span class="pill ${st.tag}" style="font-size:11px;padding:1px 8px">${t("t_" + st.tag)}</span></span></span><span class="num">${fcfa(st.total)}</span></div>`).join("")}</div></div>`}
     </div>`;
 }
 

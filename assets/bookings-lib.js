@@ -9,6 +9,16 @@ const SLOTS = {
 const METHODS = {
   om: "Orange Money", wave: "Wave", cheque: "Chèque", tpe: "TPE (carte)", especes: "Espèces", virement: "Virement"
 };
+// Opening hours (assets/config.js → HOURS)
+const HRS = (window.JACOBLEU_CONFIG || {}).HOURS || {};
+const OPEN_DAYS = HRS.OPEN_DAYS || [0, 1, 2, 3, 4, 5, 6];
+const isCowork = roomId => (HRS.COWORK_ROOMS || []).includes(roomId);
+const slotTimes = (roomId, slot) => ((isCowork(roomId) ? HRS.COWORK_SLOTS : HRS.EVENT_SLOTS) || {})[slot] || null;
+const hfmt = t => t.replace(":", "h");
+const slotHours = (roomId, slot) => { const s = slotTimes(roomId, slot); return s ? hfmt(s[0]) + " – " + hfmt(s[1]) : (SLOTS[slot] || {}).hours; };
+const isOpenDay = iso => OPEN_DAYS.includes(new Date(iso + "T12:00:00").getDay());
+function openDaysCount(a, b) { let n = 0; for (let d = a; d <= b; d = addDays(d, 1)) { if (isOpenDay(d)) n++; if (n > 400) break; } return n; }
+
 const slotLabel = s => (SLOTS[s] || {})[typeof LANG !== "undefined" ? LANG : "fr"] || s;
 
 // 400000 → "400 000 FCFA"
@@ -43,7 +53,8 @@ function bookingState(b, payments) {
 // Room price, mirrors save_booking() in supabase/bookings.sql (the database has the final say)
 function quote(room, slot, start, end, persons, extras, discount) {
   if (!room || !start || !end || end < start) return null;
-  const days = daysBetween(start, end) + 1;
+  if (!isOpenDay(start) || !isOpenDay(end)) return { error: "closedDay" };
+  const days = openDaysCount(start, end);
   const unit = slot === "day" ? room.price_day : room.price_half;
   if (unit == null) return { error: "dayOnly", days };
   const per = room.per_person ? Math.max(1, persons || 1) : 1;

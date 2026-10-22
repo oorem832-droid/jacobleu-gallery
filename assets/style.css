@@ -400,3 +400,42 @@ button,a,input,select,label{-webkit-tap-highlight-color:transparent}
 .cbadge{display:flex;justify-content:space-between;gap:10px;align-items:center;background:var(--bleu-soft);color:var(--bleu);border-radius:10px;padding:9px 12px;font-size:13.5px;flex-wrap:wrap}
 .cbadge button{background:none;border:0;color:inherit;text-decoration:underline;cursor:pointer;font-size:13px;padding:0}
 .drawer{grid-auto-rows:max-content}
+.daystrip{grid-template-columns:repeat(auto-fit,minmax(0,1fr))}
+
+/* ===================== coworking chrono ===================== */
+.ch-top{display:flex;flex-wrap:wrap;gap:12px 20px;align-items:flex-end;justify-content:space-between;margin-bottom:14px}
+.ch-clock{font-family:var(--display);font-stretch:118%;font-weight:800;font-size:clamp(36px,7vw,56px);line-height:1;font-variant-numeric:tabular-nums}
+.ch-tools{display:flex;flex-wrap:wrap;gap:8px}
+.ch-tools .btn{padding:9px 14px;font-size:14px;min-height:42px}
+.ch-tools .btn.on{background:var(--ok-soft);color:var(--ok);border-color:transparent}
+.soundbar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between;background:var(--warn-soft);color:var(--warn);padding:12px 14px;border-radius:12px;margin-bottom:14px;font-size:14px}
+.ch-sec{margin:18px 0 8px;display:flex;align-items:center;gap:8px;font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);font-weight:600}
+.ch-sec b{background:var(--panel);border:1px solid var(--line);border-radius:999px;padding:1px 8px;color:var(--ink);letter-spacing:0}
+.ch-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px}
+.ck{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:16px;display:grid;gap:10px;min-width:0;position:relative}
+.ck h4{margin:0;font-size:16px;overflow-wrap:anywhere}
+.ck .sub{font-size:12.5px;color:var(--muted);margin:0}
+.ck .cdl{font-size:11.5px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);font-weight:600}
+.ck .cd{font-family:var(--display);font-stretch:112%;font-weight:800;font-size:40px;line-height:1;font-variant-numeric:tabular-nums}
+.ck .tm{font-family:var(--mono);font-size:12.5px;color:var(--muted)}
+.ck .pg{height:8px;background:var(--wall);border-radius:4px;overflow:hidden}
+.ck .pg i{display:block;height:100%;background:var(--bleu);border-radius:4px}
+.ck .acts{display:flex;flex-wrap:wrap;gap:6px}
+.ck .acts .btn{padding:9px 12px;font-size:13.5px;min-height:42px;flex:1 1 auto}
+.ck.soon{border-color:var(--warn);background:linear-gradient(var(--warn-soft),var(--warn-soft)) top/100% 6px no-repeat,var(--panel)}
+.ck.soon .cd{color:var(--warn)}
+.ck.soon .pg i{background:var(--warn)}
+.ck.overdue{border:2px solid #C2362B;background:color-mix(in srgb,#C2362B 9%,var(--panel))}
+.ck.overdue .cd,.ck.overdue .cdl{color:#C2362B}
+.ck.overdue .pg i{background:#C2362B}
+:root[data-theme="dark"] .ck.overdue .cd,:root[data-theme="dark"] .ck.overdue .cdl{color:#FF8A7E}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .ck.overdue .cd,:root:not([data-theme="light"]) .ck.overdue .cdl{color:#FF8A7E}}
+.ck.upcoming,.ck.finished{opacity:.75}
+.ck.finished .cd{font-size:22px}
+.btn.alarm{background:#C2362B;color:#FFFFFF}
+@media (prefers-reduced-motion:no-preference){.ck.overdue{animation:pulse 1.2s ease-in-out infinite}@keyframes pulse{50%{box-shadow:0 0 0 6px color-mix(in srgb,#C2362B 30%,transparent)}}}
+.freeform{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr) auto;gap:10px;align-items:end}
+@media (max-width:640px){.freeform{grid-template-columns:1fr}}
+body.fs header,body.fs .tabbar,body.fs .ch-hide-fs{display:none!important}
+body.fs{padding-bottom:16px!important}
+body.fs .ck .cd{font-size:56px}

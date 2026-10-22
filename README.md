@@ -12,6 +12,7 @@ dashboard of visits, peak hours, busiest days, regular visitors and a WhatsApp l
 | `poster.html` | Manager | Printable A4/A3 poster with the QR code. |
 | `bookings.html` | Staff and manager | Room planning, bookings, payments, invoices. |
 | `doc.html` | Staff and manager | Printable invoice (facture / proforma) and receipt (reçu). |
+| `chrono.html` | Staff and manager | Coworking timer: countdown per client, chime 15 min before the end, alarm when time is up. |
 | `clients.html` | Staff and manager | Client file: every client, their bookings month by month, who comes back. |
 
 **How it fits together:** the pages are plain HTML files (no build step) hosted for free
@@ -32,6 +33,7 @@ jacobleu-gallery/
 ├── bookings.html       room bookings (staff)
 ├── doc.html            invoice / receipt, print or save as PDF
 ├── clients.html        client file and history
+├── chrono.html         coworking timer with alarms (reception tablet / phone)
 ├── manifest.webmanifest  lets staff install the site as an app
 ├── assets/
 │   ├── config.js       ← the only file you edit (Supabase address + key)
@@ -247,13 +249,43 @@ To put the Jacobleu icon on the home screen:
 It then opens full screen, straight on the staff page, with no address bar.
 Visitors don't need this: they just scan the QR code.
 
+## Opening hours
+
+Set in `assets/config.js` → `HOURS`:
+
+- Gallery: mardi au jeudi 09h30 – 19h30, vendredi et samedi 09h30 – 21h00, fermé dimanche et lundi.
+- Coworking (salle standard + salle de réunion): mardi au samedi 09h30 – 17h30
+  (matin 09h30 – 13h30, après-midi 13h30 – 17h30).
+- Event rooms: matin 09h30 – 13h30, après-midi 14h00 – 18h00, journée 09h30 – 18h00.
+
+Bookings cannot start or end on a closed day, and a multi-day booking only bills the open days
+(Tuesday to the next Tuesday = 6 days). The closed days are also set in the database:
+`public.is_open_day()` in `supabase/bookings.sql`.
+
+## Coworking chrono (`…/chrono.html`)
+
+For the reception phone or tablet:
+
+1. Open **Chrono** and tap **Activer le son** (phones and tablets only play sound after a tap).
+   Tap **Garder l'écran allumé** so the screen doesn't go to sleep. Keep the volume up.
+2. Every coworking booking of the day appears with its countdown.
+3. **15 minutes before the end**: a soft chime, the card turns orange ("Bientôt fini").
+4. **When time is up**: a loud alarm that repeats every 20 seconds, the card turns red and shows
+   how long the client has gone over ("+12:30"). The phone vibrates.
+5. Tap **Client parti** to stop the alarm, or **+30 min / +1 h** if the client pays for more time.
+6. **Chrono libre**: start a timer for a walk-in client without a booking.
+7. **Plein écran** turns the screen into a large display.
+
+The extensions, "Client parti" and walk-in timers are remembered on that device for the day.
+Use one reception device for the chrono.
+
 ## Who can see what
 
 | | Jacob (owner, `manager`) | Staff (`staff`) | Visitor (QR code) |
 |---|---|---|---|
 | Sign the visitor list | ✅ | ✅ | ✅ |
 | Clock in / out | ✅ | ✅ own hours only | ❌ |
-| Bookings, payments, invoices, clients | ✅ | ✅ | ❌ |
+| Bookings, payments, invoices, clients, coworking chrono | ✅ | ✅ | ❌ |
 | Visitors list, dashboard, revenue, staff hours | ✅ | ❌ | ❌ |
 | Cancel a payment, change prices, delete a visitor, export clients | ✅ | ❌ | ❌ |
 | QR poster | ✅ | ❌ | ❌ |

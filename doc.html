@@ -63,10 +63,10 @@ td small{color:var(--muted);display:block}
 <body>
 <div id="app"><div class="msg">…</div></div>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
-<script src="assets/config.js"></script>
-<script src="assets/i18n.js"></script>
-<script src="assets/common.js"></script>
-<script src="assets/bookings-lib.js"></script>
+<script src="assets/config.js?v=7"></script>
+<script src="assets/i18n.js?v=7"></script>
+<script src="assets/common.js?v=7"></script>
+<script src="assets/bookings-lib.js?v=7"></script>
 <script>
 // Invoices and receipts are always in French.
 LANG = "fr";
@@ -104,7 +104,7 @@ function render(b, pays, room) {
     <div class="title"><h1>${kind === "RECU" ? "REÇU" : kind}</h1>
       <div class="meta">N° ${esc(number)}<br>Date : ${dmy(docDate)}${b.cancelled_at ? `<br><span class="stamp cancel">ANNULÉE</span>` : st.key === "paid" && !pay ? `<br><span class="stamp">PAYÉE</span>` : ""}</div></div>`;
   const clientBox = `<div class="box"><h3>${pay ? "Reçu de" : "Facturé à"}</h3><b>${esc(b.client_org || b.client_name)}</b>${b.client_org ? "<br>" + esc(b.client_name) : ""}${b.client_phone ? "<br>" + esc(b.client_phone) : ""}${b.client_email ? "<br>" + esc(b.client_email) : ""}</div>`;
-  const eventBox = `<div class="box"><h3>Réservation</h3>${b.event_title ? "<b>" + esc(b.event_title) + "</b><br>" : ""}${esc(room.name)}<br>${dateRange(b)}<br>${SLOTS[b.slot].fr} · ${SLOTS[b.slot].hours}</div>`;
+  const eventBox = `<div class="box"><h3>Réservation</h3>${b.event_title ? "<b>" + esc(b.event_title) + "</b><br>" : ""}${esc(room.name)}<br>${dateRange(b)}<br>${SLOTS[b.slot].fr} · ${slotHours(b.room_id, b.slot)}</div>`;
   const signature = `<div class="sign"><div>${esc(BILL.SIGNATORY_TITLE || "")}${sigImg}${BILL.SIGNATORY_NAME ? "<b>" + esc(BILL.SIGNATORY_NAME) + "</b>" : ""}</div></div>`;
   const footer = `<div class="foot">${esc(BILL.COMPANY || "")} · ${esc(C.ADDRESS || "")} · ${esc(BILL.PHONE || "")} · ${esc(C.EMAIL || "")}${BILL.RCCM ? " · RCCM " + esc(BILL.RCCM) : ""}</div>`;
 
@@ -132,7 +132,7 @@ function render(b, pays, room) {
       ${signature}${footer}`;
   } else {
     const per = room.per_person ? ` × ${b.persons} pers.` : "";
-    const lines = [`<tr><td><b>Location ${esc(room.name)}</b><small>${SLOTS[b.slot].fr} (${SLOTS[b.slot].hours}) · ${dateRange(b)}${room.per_person ? "" : b.persons > 1 ? " · " + b.persons + " personnes" : ""}</small></td>
+    const lines = [`<tr><td><b>Location ${esc(room.name)}</b><small>${SLOTS[b.slot].fr} (${slotHours(b.room_id, b.slot)}) · ${dateRange(b)}${room.per_person ? "" : b.persons > 1 ? " · " + b.persons + " personnes" : ""}</small></td>
       <td class="r">${b.days}${per}</td><td class="r">${fcfa(b.unit_price)}</td><td class="r">${fcfa(b.room_amount)}</td></tr>`];
     (b.extras || []).forEach(e => lines.push(`<tr><td>${esc(e.label)}</td><td class="r">1</td><td class="r">${fcfa(e.amount)}</td><td class="r">${fcfa(e.amount)}</td></tr>`));
     if (Number(b.discount)) lines.push(`<tr><td>Remise</td><td class="r"></td><td class="r"></td><td class="r">− ${fcfa(b.discount)}</td></tr>`);
@@ -149,7 +149,7 @@ function render(b, pays, room) {
       <div class="cols">
         <div class="box"><h3>Modalités de paiement</h3>${esc(BILL.CONDITIONS || "")}<ul>${(BILL.PAYMENT_METHODS || []).map(m => "<li>" + esc(m) + "</li>").join("")}</ul></div>
         <div class="box"><h3>${isEvent ? "Mis à disposition" : "Horaires"}</h3>${isEvent ? `<ul>${(BILL.INCLUDED || []).map(m => "<li>" + esc(m) + "</li>").join("")}</ul><small style="color:var(--muted)">${esc(BILL.NOTE || "")}</small>` : ""}
-          <div style="margin-top:6px">Demi-journée : 09h30 – 13h30 ou 14h00 – 18h00<br>Journée : 09h30 – 18h00</div></div>
+          <div style="margin-top:6px">Demi-journée : ${slotHours(b.room_id, "am")} ou ${slotHours(b.room_id, "pm")}<br>Journée : ${slotHours(b.room_id, "day")}<br><small style="color:var(--muted)">${esc((HRS.LINES_FR || []).join(" · "))}</small></div></div>
       </div>
       ${signature}${footer}`;
   }

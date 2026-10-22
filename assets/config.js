@@ -27,6 +27,25 @@ window.JACOBLEU_CONFIG = {
   ADDRESS: "Abidjan, 2 Plateaux Aghien, carrefour pharmacie Las Palmas",
 
   // ------------------------------------------------------------------
+  // OPENING HOURS
+  // Days: 0 = dimanche, 1 = lundi, 2 = mardi … 6 = samedi.
+  // If you change the closed days, also change public.is_open_day() in supabase/bookings.sql.
+  // ------------------------------------------------------------------
+  HOURS: {
+    OPEN_DAYS: [2, 3, 4, 5, 6],                       // mardi → samedi
+    GALLERY: { 2: ["09:30", "19:30"], 3: ["09:30", "19:30"], 4: ["09:30", "19:30"], 5: ["09:30", "21:00"], 6: ["09:30", "21:00"] },
+    LINES_FR: ["Mardi au jeudi : 09h30 – 19h30", "Vendredi et samedi : 09h30 – 21h00", "Dimanche et lundi : fermé"],
+    LINES_EN: ["Tuesday to Thursday: 9:30am – 7:30pm", "Friday and Saturday: 9:30am – 9pm", "Sunday and Monday: closed"],
+    COWORK_FR: "Coworking : mardi au samedi, 09h30 – 17h30",
+    COWORK_EN: "Coworking: Tuesday to Saturday, 9:30am – 5:30pm",
+    // Rooms that follow the coworking hours (and appear on the Chrono screen)
+    COWORK_ROOMS: ["standard", "reunion"],
+    COWORK_SLOTS: { am: ["09:30", "13:30"], pm: ["13:30", "17:30"], day: ["09:30", "17:30"] },
+    EVENT_SLOTS:  { am: ["09:30", "13:30"], pm: ["14:00", "18:00"], day: ["09:30", "18:00"] },
+    CHRONO_WARN_MINUTES: 15                            // first chime before the end
+  },
+
+  // ------------------------------------------------------------------
   // INVOICES AND RECEIPTS (room bookings)
   // Room prices are NOT here: they are in Supabase → Table Editor → rooms.
   // ------------------------------------------------------------------

@@ -3,7 +3,7 @@ const CFG = window.JACOBLEU_CONFIG || {};
 const CONFIGURED = !!(CFG.SUPABASE_URL && CFG.SUPABASE_KEY && !/YOUR-/.test(CFG.SUPABASE_URL + CFG.SUPABASE_KEY));
 const sb = CONFIGURED ? window.supabase.createClient(CFG.SUPABASE_URL, CFG.SUPABASE_KEY) : null;
 
-const DAY = 864e5, OPEN = 8;
+const DAY = 864e5, OPEN = 9, NH = 12;   // dashboard hours: 9h → 20h (gallery closes at 21h at the latest)
 let LANG = (() => { try { return localStorage.getItem("jacobleu-lang") || "fr"; } catch (e) { return "fr"; } })();
 document.documentElement.lang = LANG;
 
@@ -30,6 +30,7 @@ function header(active, links = true) {
       <a href="staff.html" ${active === "staff" ? 'aria-current="page"' : ""}>${t("staff")}</a>
       <a href="bookings.html" ${active === "bookings" ? 'aria-current="page"' : ""}>${t("bookings")}</a>
       <a href="clients.html" ${active === "clients" ? 'aria-current="page"' : ""}>${t("clients")}</a>
+      <a href="chrono.html" ${active === "chrono" ? 'aria-current="page"' : ""}>${t("chrono")}</a>
       ${isMgr ? `<a href="admin.html" ${active === "admin" ? 'aria-current="page"' : ""}>${t("manager")}</a>
       <a href="poster.html" ${active === "poster" ? 'aria-current="page"' : ""}>${t("poster")}</a>` : ""}</nav>` : "";
   // On phones the same links become a tab bar at the bottom of the screen
@@ -37,6 +38,7 @@ function header(active, links = true) {
     staff: '<path d="M12 7v5l3 2"/><circle cx="12" cy="12" r="9"/>',
     bookings: '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/>',
     admin: '<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>',
+    chrono: '<circle cx="12" cy="13.5" r="7.5"/><path d="M12 9.5v4l2.5 2M9.5 2.5h5M12 2.5V6M19 6.5l1.5-1.5"/>',
     clients: '<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c0-3.6 2.9-6 6.5-6s6.5 2.4 6.5 6"/><path d="M16 4.5a3.5 3.5 0 0 1 0 7M18 14.3c2.1.7 3.5 2.8 3.5 5.7"/>',
     poster: '<rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><path d="M14 14h3v3h-3zM18 18h3v3h-3z"/>'
   };
@@ -46,8 +48,8 @@ function header(active, links = true) {
     document.body.classList.add("has-tabbar");
   }
   const tb = document.getElementById("tabbar");
-  if (tb) tb.innerHTML = tab("staff.html", "staff", t("staff")) + tab("bookings.html", "bookings", t("bookings")) + tab("clients.html", "clients", t("clients")) + (isMgr ? tab("admin.html", "admin", t("manager")) + tab("poster.html", "poster", t("poster")) : "");
-  if (tb) tb.style.gridTemplateColumns = `repeat(${isMgr ? 5 : 3},1fr)`;
+  if (tb) tb.innerHTML = tab("staff.html", "staff", t("staff")) + tab("bookings.html", "bookings", t("bookings")) + tab("clients.html", "clients", t("clients")) + tab("chrono.html", "chrono", t("chrono")) + (isMgr ? tab("admin.html", "admin", t("manager")) : "");
+  if (tb) tb.style.gridTemplateColumns = `repeat(${isMgr ? 5 : 4},1fr)`;
   return `<header>
     <div class="brand"><div class="mark" aria-hidden="true"><span><i></i><i></i><i></i></span></div>
       <div><b>JACOBLEU</b><small>Art Gallery · Abidjan Plateau</small></div></div>

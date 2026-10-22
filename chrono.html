@@ -1,0 +1,247 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Jacobleu · Chrono coworking</title>
+<meta name="robots" content="noindex">
+<link rel="icon" type="image/png" href="assets/favicon.png">
+<link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#13151C">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Jacobleu">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..900&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="assets/style.css?v=7">
+</head>
+<body>
+<div class="wrap">
+  <div id="hdr"></div>
+  <main id="app"><div class="loading">…</div></main>
+</div>
+<div id="drawer-root"></div>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<script src="assets/config.js?v=7"></script>
+<script src="assets/i18n.js?v=7"></script>
+<script src="assets/common.js?v=7"></script>
+<script src="assets/bookings-lib.js?v=7"></script>
+<script>
+// Coworking chrono: countdown for each coworking client today, with a chime
+// before the end and an alarm when the time is up. Runs on the reception
+// phone / tablet; sound must be switched on with a tap (browser rule).
+const H = (CFG.HOURS || {});
+const WARN = (H.CHRONO_WARN_MINUTES || 15) * 60e3;
+const today = () => isoDate(new Date());
+const at = (iso, hhmm) => { const [h, m] = hhmm.split(":").map(Number); const d = parseD(iso); d.setHours(h, m, 0, 0); return d.getTime(); };
+const store = {
+  get(k, def) { try { return JSON.parse(localStorage.getItem(k)) ?? def; } catch (e) { return def; } },
+  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} }
+};
+const SKEY = () => "jacobleu-chrono-" + today();      // per-day state on this device
+
+let S = { ready: false, session: null, me: null, err: "", rooms: [], bookings: [], statuses: {} };
+let AC = null, wakeLock = null, wantAwake = false, lastAlarm = 0;
+const fired = new Set();                               // chimes/alarms already played
+
+async function load() {
+  Object.assign(S, await myProfile());
+  if (S.me) {
+    try {
+      const d = today();
+      const [r, b] = await Promise.all([
+        sb.from("rooms").select("*").order("sort"),
+        sb.from("bookings").select("*").lte("start_date", d).gte("end_date", d)
+      ]);
+      if (r.error) throw r.error; if (b.error) throw b.error;
+      S.rooms = r.data; S.bookings = b.data.filter(x => !x.cancelled_at && isCowork(x.room_id)); S.err = "";
+    } catch (e) { S.err = t("netErr"); }
+  }
+  S.ready = true; render();
+}
+
+// All sessions for today: from bookings + free timers started on this device
+function sessions() {
+  const d = today(), st = store.get(SKEY(), {}), out = [];
+  if (isOpenDay(d)) for (const b of S.bookings) {
+    const tm = slotTimes(b.room_id, b.slot); if (!tm) continue;
+    const key = "b" + b.id, s = st[key] || {};
+    out.push({ key, name: b.client_org || b.client_name, contact: b.client_org ? b.client_name : "", room: (S.rooms.find(r => r.id === b.room_id) || {}).name || b.room_id,
+      persons: b.persons, start: at(d, tm[0]), end: at(d, tm[1]) + (s.extra || 0) * 60e3, baseEnd: at(d, tm[1]), extra: s.extra || 0, ack: !!s.ack, free: false });
+  }
+  for (const f of store.get(SKEY() + "-free", [])) {
+    const s = st[f.key] || {};
+    out.push({ key: f.key, name: f.name, contact: "", room: t("walkIn"), persons: null, start: f.start, end: f.end + (s.extra || 0) * 60e3, baseEnd: f.end, extra: s.extra || 0, ack: !!s.ack, free: true });
+  }
+  return out;
+}
+function statusOf(x, now) {
+  if (x.ack) return "finished";
+  if (now < x.start) return "upcoming";
+  if (now >= x.end) return "overdue";
+  return x.end - now <= WARN ? "soon" : "running";
+}
+const two = n => String(n).padStart(2, "0");
+const dur = ms => { ms = Math.max(0, Math.round(ms / 1000)); const h = Math.floor(ms / 3600), m = Math.floor(ms % 3600 / 60), s = ms % 60; return (h ? h + ":" : "") + two(m) + ":" + two(s); };
+const clock = ts => { const d = new Date(ts); return two(d.getHours()) + "h" + two(d.getMinutes()); };
+
+window.render = function () {
+  $("#hdr").innerHTML = header("chrono");
+  const app = $("#app");
+  if (!CONFIGURED) return app.innerHTML = setupNotice();
+  if (!S.ready) return app.innerHTML = `<div class="loading">${t("loading")}</div>`;
+  if (!S.session) return app.innerHTML = `<section class="view">${loginForm("sLoginSub")}</section>`;
+  if (!S.me) return app.innerHTML = `<section class="view"><div class="card locked"><p>${t("notStaff")}</p></div></section>`;
+  const now = Date.now(), all = sessions();
+  S.statuses = Object.fromEntries(all.map(x => [x.key, statusOf(x, now)]));
+  const grp = k => all.filter(x => k.includes(S.statuses[x.key])).sort((a, b) => a.end - b.end);
+  const sec = (label, list) => list.length ? `<div class="ch-sec">${label} <b>${list.length}</b></div><div class="ch-grid">${list.map(card).join("")}</div>` : "";
+  const audioOk = AC && AC.state === "running";
+  const notifOk = "Notification" in window && Notification.permission === "granted";
+  app.innerHTML = `<section class="view">
+    <div class="ch-top">
+      <div><div class="eyebrow">${t("chronoTitle")} · ${t("daysL")[(new Date().getDay() + 6) % 7]} ${dmy(today())}</div><div class="ch-clock" id="ch-clock">${clock(now)}</div></div>
+      <div class="ch-tools">
+        <button class="btn ${audioOk ? "on" : ""}" type="button" data-act="sound">${audioOk ? t("soundReady") : t("soundOn")}</button>
+        <button class="btn ghost" type="button" data-act="test">${t("soundTest")}</button>
+        ${"wakeLock" in navigator ? `<button class="btn ghost ${wakeLock ? "on" : ""}" type="button" data-act="awake">${wakeLock ? t("awakeOn") : t("keepAwake")}</button>` : ""}
+        ${"Notification" in window ? `<button class="btn ghost ${notifOk ? "on" : ""}" type="button" data-act="notif">${notifOk ? t("notifyOn") : t("notifyBtn")}</button>` : ""}
+        <button class="btn ghost" type="button" data-act="fs">${t("fullscreen")}</button>
+      </div>
+    </div>
+    ${audioOk ? "" : `<div class="soundbar ch-hide-fs"><span>${t("soundOff")}</span><button class="btn" type="button" data-act="sound">${t("soundOn")}</button></div>`}
+    <p class="small ch-hide-fs" style="margin:0 0 6px;max-width:70ch">${t("chronoSub", { w: WARN / 60e3 })} ${esc(H[LANG === "en" ? "COWORK_EN" : "COWORK_FR"] || "")}</p>
+    ${S.err ? `<div class="notice">${S.err}</div>` : ""}
+    ${!isOpenDay(today()) ? `<div class="notice">${t("closedToday")}</div>` : ""}
+    ${sec(t("overdue"), grp(["overdue"]))}
+    ${sec(t("running"), grp(["soon", "running"]))}
+    ${sec(t("upcoming"), grp(["upcoming"]))}
+    ${!all.length ? `<div class="card empty" style="margin-top:12px">${t("noSessions")}</div>` : ""}
+    <div class="card ch-hide-fs" style="margin-top:20px"><h3>${t("freeTitle")}</h3>
+      <form id="freeform" class="freeform" novalidate style="margin-top:10px">
+        <label for="fr-name">${t("freeName")}<input id="fr-name" type="text" autocomplete="off" placeholder="Kouassi Aya"></label>
+        <label for="fr-dur">${t("duration")}<select id="fr-dur"><option value="30">${t("d30")}</option><option value="60" selected>${t("d60")}</option><option value="120">${t("d120")}</option><option value="240">${t("d240")}</option><option value="close">${t("dClose")}</option></select></label>
+        <button class="btn" type="submit">${t("startChrono")}</button>
+      </form></div>
+    ${sec(t("finished"), grp(["finished"]))}
+  </section>`;
+  tick(true);
+};
+
+function card(x) {
+  const s = S.statuses[x.key];
+  const lbl = s === "upcoming" ? t("startsIn") : s === "overdue" ? t("over") : s === "finished" ? "" : t("endsIn");
+  return `<div class="ck ${s}" data-key="${x.key}">
+    <div><h4>${esc(x.name)}</h4><p class="sub">${esc(x.room)}${x.persons ? " · " + x.persons + " " + t("people") : ""}${x.contact ? " · " + esc(x.contact) : ""}</p></div>
+    ${s === "finished" ? `<div class="cd">${t("finished")}</div>` : `<div><div class="cdl">${lbl}</div><div class="cd" data-cd="${x.key}">—</div></div>`}
+    <div class="tm">${clock(x.start)} → ${clock(x.baseEnd)}${x.extra ? ` <b>+${x.extra} min</b>` : ""}</div>
+    ${s !== "finished" && s !== "upcoming" ? `<div class="pg"><i data-pg="${x.key}"></i></div>` : ""}
+    <div class="acts">${s === "finished" ? `<button class="btn ghost" type="button" data-reopen="${x.key}">${t("reopen")}</button>`
+      : `<button class="btn ${s === "overdue" ? "alarm" : "dark"}" type="button" data-ack="${x.key}">${t("left")}</button>
+         <button class="btn ghost" type="button" data-ext="${x.key}|30">${t("extend30")}</button><button class="btn ghost" type="button" data-ext="${x.key}|60">${t("extend60")}</button>`}
+      ${x.free ? `<button class="btn ghost" type="button" data-remove="${x.key}">${t("remove")}</button>` : ""}</div>
+  </div>`;
+}
+
+// Every second: update counters, play chimes / alarms, re-render on status change
+function tick(fromRender) {
+  if (!S.me) return;
+  const now = Date.now(), all = sessions();
+  let changed = false, overdue = [];
+  for (const x of all) {
+    const s = statusOf(x, now);
+    if (S.statuses[x.key] !== s) changed = true;
+    const cd = document.querySelector(`[data-cd="${x.key}"]`);
+    if (cd) cd.textContent = s === "upcoming" ? dur(x.start - now) : s === "overdue" ? "+" + dur(now - x.end) : dur(x.end - now);
+    const pg = document.querySelector(`[data-pg="${x.key}"]`);
+    if (pg) pg.style.width = Math.min(100, Math.max(0, (now - x.start) / (x.end - x.start) * 100)) + "%";
+    const id = x.key + "@" + x.end;
+    if (s === "soon" && !fired.has("w" + id)) { fired.add("w" + id); chime(); notify(t("soonTitle"), t("soonMsg", { n: x.name, m: Math.ceil((x.end - now) / 60e3) })); }
+    if (s === "overdue") {
+      overdue.push(x);
+      if (!fired.has("a" + id)) { fired.add("a" + id); fired.add("w" + id); lastAlarm = 0; notify(t("doneTitle"), t("doneMsg", { n: x.name })); }
+    }
+  }
+  // repeat the alarm every 20 s while someone is over time and not marked as left
+  if (overdue.length && now - lastAlarm > 20e3) { lastAlarm = now; alarm(); if (navigator.vibrate) navigator.vibrate([400, 150, 400, 150, 400]); }
+  document.title = overdue.length ? `⏰ (${overdue.length}) ${t("overdue")} · Jacobleu` : "Jacobleu · " + t("chronoTitle");
+  const c = $("#ch-clock"); if (c) c.textContent = clock(now);
+  if (changed && !fromRender && !document.activeElement?.closest?.("#freeform")) render();
+}
+setInterval(() => tick(false), 1000);
+setInterval(() => { if (S.me && document.visibilityState === "visible") load(); }, 120e3);
+
+/* ---------- sound (generated, no audio files needed) ---------- */
+function unlockAudio() {
+  try { if (!AC) AC = new (window.AudioContext || window.webkitAudioContext)(); AC.resume(); } catch (e) {}
+}
+function tone(f, start, len, vol, type) {
+  const o = AC.createOscillator(), g = AC.createGain();
+  o.type = type; o.frequency.value = f;
+  g.gain.setValueAtTime(0.0001, start); g.gain.exponentialRampToValueAtTime(vol, start + 0.02);
+  g.gain.setValueAtTime(vol, start + len - 0.05); g.gain.exponentialRampToValueAtTime(0.0001, start + len);
+  o.connect(g); g.connect(AC.destination); o.start(start); o.stop(start + len + 0.05);
+}
+function chime() { if (!AC || AC.state !== "running") return; const s = AC.currentTime + 0.05; tone(784, s, 0.35, 0.3, "sine"); tone(1047, s + 0.4, 0.5, 0.3, "sine"); }
+function alarm() {
+  if (!AC || AC.state !== "running") return;
+  const s = AC.currentTime + 0.05;
+  for (let r = 0; r < 3; r++) for (let i = 0; i < 4; i++) tone(i % 2 ? 1175 : 880, s + r * 1.4 + i * 0.25, 0.2, 0.6, "square");
+}
+function notify(title, body) {
+  try { if ("Notification" in window && Notification.permission === "granted" && document.visibilityState !== "visible") new Notification(title, { body, icon: "assets/icon-192.png", tag: body }); } catch (e) {}
+}
+async function setAwake(on) {
+  wantAwake = on;
+  try {
+    if (on) { wakeLock = await navigator.wakeLock.request("screen"); wakeLock.addEventListener("release", () => { wakeLock = null; render(); }); }
+    else if (wakeLock) { await wakeLock.release(); wakeLock = null; }
+  } catch (e) { wakeLock = null; }
+  render();
+}
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && wantAwake && !wakeLock) setAwake(true); });
+
+/* ---------- actions ---------- */
+function setState(key, patch) { const st = store.get(SKEY(), {}); st[key] = { ...(st[key] || {}), ...patch }; store.set(SKEY(), st); }
+document.addEventListener("click", async e => {
+  const el = e.target;
+  const ack = el.closest("[data-ack]"); if (ack) { setState(ack.dataset.ack, { ack: true }); render(); return; }
+  const reo = el.closest("[data-reopen]"); if (reo) { setState(reo.dataset.reopen, { ack: false }); render(); return; }
+  const ext = el.closest("[data-ext]");
+  if (ext) { const [k, m] = ext.dataset.ext.split("|"); const st = store.get(SKEY(), {}); setState(k, { extra: ((st[k] || {}).extra || 0) + +m, ack: false }); toast(t("extended", { n: m })); render(); return; }
+  const rm = el.closest("[data-remove]");
+  if (rm) { store.set(SKEY() + "-free", store.get(SKEY() + "-free", []).filter(f => f.key !== rm.dataset.remove)); render(); return; }
+  const a = el.closest("[data-act]"); if (!a) return;
+  const act = a.dataset.act;
+  if (act === "sound") { unlockAudio(); lastAlarm = 0; setTimeout(() => { chime(); render(); }, 150); }
+  if (act === "test") { unlockAudio(); setTimeout(() => { alarm(); render(); }, 150); }
+  if (act === "awake") setAwake(!wakeLock);
+  if (act === "notif") { try { await Notification.requestPermission(); } catch (x) {} render(); }
+  if (act === "fs") {
+    const on = !document.body.classList.contains("fs");
+    document.body.classList.toggle("fs", on);
+    try { if (on) await document.documentElement.requestFullscreen?.(); else if (document.fullscreenElement) await document.exitFullscreen(); } catch (x) {}
+  }
+});
+document.addEventListener("fullscreenchange", () => { if (!document.fullscreenElement) document.body.classList.remove("fs"); });
+document.addEventListener("submit", async e => {
+  if (e.target.id === "login") { e.preventDefault(); if (await doLogin(e)) { S.ready = false; render(); load(); } return; }
+  if (e.target.id === "freeform") {
+    e.preventDefault();
+    const name = $("#fr-name").value.trim(); if (name.length < 2) { $("#fr-name").focus(); return; }
+    const v = $("#fr-dur").value, now = Date.now();
+    const close = at(today(), ((H.COWORK_SLOTS || {}).day || ["", "17:30"])[1]);
+    const end = v === "close" ? Math.max(close, now + 60e3) : now + (+v) * 60e3;
+    const list = store.get(SKEY() + "-free", []); list.push({ key: "f" + now, name, start: now, end }); store.set(SKEY() + "-free", list);
+    unlockAudio(); render();
+  }
+});
+
+render();
+if (CONFIGURED) load();
+</script>
+</body>
+</html>

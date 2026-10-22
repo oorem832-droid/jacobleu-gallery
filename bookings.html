@@ -16,7 +16,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..900&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
-<link rel="stylesheet" href="assets/style.css">
+<link rel="stylesheet" href="assets/style.css?v=7">
 </head>
 <body>
 <div class="wrap">
@@ -25,10 +25,10 @@
 </div>
 <div id="drawer-root"></div>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
-<script src="assets/config.js"></script>
-<script src="assets/i18n.js"></script>
-<script src="assets/common.js"></script>
-<script src="assets/bookings-lib.js"></script>
+<script src="assets/config.js?v=7"></script>
+<script src="assets/i18n.js?v=7"></script>
+<script src="assets/common.js?v=7"></script>
+<script src="assets/bookings-lib.js?v=7"></script>
 <script>
 // Room bookings: any active staff member can book, take payments and print invoices.
 const todayISO = isoDate(new Date());
@@ -72,6 +72,8 @@ async function load() {
     if (c) { openNew(); pickClient(c); history.replaceState(null, "", location.pathname); }
   }
 }
+
+const nextOpen = d => { for (let i = 0; i < 7 && !isOpenDay(d); i++) d = addDays(d, 1); return d; };
 
 // ---- client picker in the booking form
 const clientCount = id => S.bookings.filter(b => b.client_id === id && !b.cancelled_at).length;
@@ -138,8 +140,8 @@ window.render = function () {
 };
 
 function planning() {
-  const days = Array.from({ length: 7 }, (_, i) => addDays(S.week, i));
-  let h = `<div class="plan-wrap"><div class="plan"><div class="ph" style="grid-row:span 2"></div>`;
+  const days = Array.from({ length: 7 }, (_, i) => addDays(S.week, i)).filter(isOpenDay);
+  let h = `<div class="plan-wrap"><div class="plan" style="grid-template-columns:150px repeat(${days.length * 2},minmax(52px,1fr));min-width:${150 + days.length * 104}px"><div class="ph" style="grid-row:span 2"></div>`;
   days.forEach(d => { const dt = parseD(d); h += `<div class="ph ${d === todayISO ? "today" : ""}" style="grid-column:span 2">${t("daysL")[(dt.getDay() + 6) % 7]} ${dt.getDate()}<small>${dmy(d).slice(0, 5)}</small></div>`; });
   days.forEach(() => { h += `<div class="hh">${LANG === "en" ? "AM" : "Mat."}</div><div class="hh">${LANG === "en" ? "PM" : "A-midi"}</div>`; });
   for (const r of rows()) {
@@ -179,7 +181,7 @@ const PHONE = window.matchMedia("(max-width: 720px)");
 PHONE.addEventListener ? PHONE.addEventListener("change", () => render()) : PHONE.addListener(() => render());
 
 function dayView() {
-  const days = Array.from({ length: 7 }, (_, i) => addDays(S.week, i));
+  const days = Array.from({ length: 7 }, (_, i) => addDays(S.week, i)).filter(isOpenDay);
   if (!days.includes(S.day)) S.day = days.includes(todayISO) ? todayISO : days[0];
   const d = S.day, past = d < todayISO;
   const busy = x => S.bookings.some(b => !b.cancelled_at && x >= b.start_date && x <= b.end_date);
@@ -198,9 +200,9 @@ function dayView() {
     };
     const whole = !r.per_person && am.length === 1 && pm.length === 1 && am[0].id === pm[0].id;
     h += `<div class="roomcard"><h4>${esc(r.name)}<small>${esc(r.capacity || "")}</small></h4>
-      ${whole ? `<div class="slotrow"><span><b>${slotLabel("day")}</b>${SLOTS.day.hours}</span>${cell("day", am)}</div>`
-        : `<div class="slotrow"><span><b>${slotLabel("am")}</b>${SLOTS.am.hours}</span>${cell("am", am)}</div>
-           <div class="slotrow"><span><b>${slotLabel("pm")}</b>${SLOTS.pm.hours}</span>${cell("pm", pm)}</div>`}</div>`;
+      ${whole ? `<div class="slotrow"><span><b>${slotLabel("day")}</b>${slotHours(r.id, "day")}</span>${cell("day", am)}</div>`
+        : `<div class="slotrow"><span><b>${slotLabel("am")}</b>${slotHours(r.id, "am")}</span>${cell("am", am)}</div>
+           <div class="slotrow"><span><b>${slotLabel("pm")}</b>${slotHours(r.id, "pm")}</span>${cell("pm", pm)}</div>`}</div>`;
   }
   return h + `</div>`;
 }
@@ -244,7 +246,7 @@ function closePanel() { S.panel = null; drawer(); if (location.hash) history.rep
 
 function emptyDraft(roomId, date, slot) {
   return { id: null, client_id: null, client_name: "", client_org: "", client_phone: "", client_email: "", event_title: "",
-    room_id: roomId || (S.rooms[0] && S.rooms[0].id), start_date: date || todayISO, end_date: date || todayISO,
+    room_id: roomId || (S.rooms[0] && S.rooms[0].id), start_date: date || nextOpen(todayISO), end_date: date || nextOpen(todayISO),
     slot: slot || "day", persons: 1, extras: [], discount: 0, notes: "" };
 }
 function openNew(roomId, date, slot) {
@@ -260,7 +262,7 @@ function openView(id) { S.panel = { mode: "view", id }; drawer(); }
 
 function formView() {
   const F = S.panel.F, r = room(F.room_id) || {};
-  const slotOpt = s => `<label><input type="radio" name="b-slot" id="b-slot-${s}" value="${s}" ${F.slot === s ? "checked" : ""} ${s !== "day" && r.price_half == null ? "disabled" : ""}><span>${slotLabel(s)}<small>${SLOTS[s].hours}</small></span></label>`;
+  const slotOpt = s => `<label><input type="radio" name="b-slot" id="b-slot-${s}" value="${s}" ${F.slot === s ? "checked" : ""} ${s !== "day" && r.price_half == null ? "disabled" : ""}><span>${slotLabel(s)}<small>${slotHours(F.room_id, s)}</small></span></label>`;
   const showIncluded = (BILL.EVENT_ROOMS || []).includes(r.id);
   return `<div class="dhead"><div><div class="eyebrow">${F.id ? esc(F.ref) : t("newBooking")}</div><h2>${F.id ? t("edit") : t("newBooking")}</h2></div>
       <button class="iconbtn" type="button" data-act="close" aria-label="${t("close")}">✕</button></div>
@@ -313,7 +315,7 @@ function updateQuote() {
   const box = $("#bquote"), warn = $("#bwarn");
   if (!box) return;
   if (!q) { box.innerHTML = ""; warn.innerHTML = ""; return; }
-  if (q.error) { box.innerHTML = ""; warn.innerHTML = `<div class="warn">${t("dayOnly")}</div>`; return; }
+  if (q.error) { box.innerHTML = ""; warn.innerHTML = `<div class="warn">${t(q.error === "closedDay" ? "closedDay" : "dayOnly")}</div>`; return; }
   const dep = Math.ceil(q.total * (BILL.DEPOSIT_PERCENT ?? 50) / 100);
   box.innerHTML = `<div class="sum">
     <div><span>${t("roomLine")} · ${slotLabel(F.slot)} · ${t(q.days > 1 ? "daysN" : "days1", { n: q.days })}${r.per_person ? " " + t("perPers", { n: q.per }) : ""}</span><span>${fcfa(q.roomAmount)}</span></div>
@@ -359,7 +361,7 @@ function detailView() {
       ${b.event_title ? `<dt>${t("event")}</dt><dd>${esc(b.event_title)}</dd>` : ""}
       <dt>${t("room")}</dt><dd>${esc(r.name)}</dd>
       <dt>Date</dt><dd>${dateRange(b)}</dd>
-      <dt>${t("slot")}</dt><dd>${slotLabel(b.slot)} · ${SLOTS[b.slot].hours}</dd>
+      <dt>${t("slot")}</dt><dd>${slotLabel(b.slot)} · ${slotHours(b.room_id, b.slot)}</dd>
       <dt>${t("persons")}</dt><dd>${b.persons}</dd>
       ${b.notes ? `<dt>${t("notes")}</dt><dd>${esc(b.notes)}</dd>` : ""}
       ${b.cancelled_at ? `<dt>${t("st_cancelled")}</dt><dd>${new Date(b.cancelled_at).toLocaleDateString("fr-FR")}${b.cancel_reason ? " · " + esc(b.cancel_reason) : ""}</dd>` : ""}
@@ -411,7 +413,7 @@ function waLink(b, st, r) {
     : `• Déjà réglé : ${fcfa(st.paid)}\n• Reste à payer avant l'événement : ${fcfa(st.balance)}`;
   let msg = F.waRecap;
   const vars = { n: b.client_name, ref: b.ref, room: r.name, dates: b.start_date === b.end_date ? dmy(b.start_date) : "du " + dmy(b.start_date) + " au " + dmy(b.end_date),
-    slot: SLOTS[b.slot].fr + " (" + SLOTS[b.slot].hours + ")", total: fcfa(b.total), payline,
+    slot: SLOTS[b.slot].fr + " (" + slotHours(b.room_id, b.slot) + ")", total: fcfa(b.total), payline,
     methods: (BILL.PAYMENT_METHODS || []).map(m => "🔹 " + m).join("\n"), cond: BILL.CONDITIONS || "" };
   for (const k in vars) msg = msg.replace("{" + k + "}", vars[k]);
   return "https://wa.me/" + ph + "?text=" + encodeURIComponent(msg.replace(/ /g, " "));

@@ -187,3 +187,35 @@ Object.assign(window.T.en,{
   topClients:"Best clients",topClientsSub:"Ranked by amount booked, all time.",
   noClients:"No clients yet. Clients are created automatically with each booking."
 });
+Object.assign(window.T.fr,{closedDay:"La galerie est fermée ce jour-là. Ouvert du mardi au samedi.",hoursTitle:"Horaires d'ouverture",posterBtn:"Affiche QR"});
+Object.assign(window.T.en,{closedDay:"The gallery is closed that day. Open Tuesday to Saturday.",hoursTitle:"Opening hours",posterBtn:"QR poster"});
+
+// Coworking chrono
+Object.assign(window.T.fr,{
+  chrono:"Chrono",chronoTitle:"Chrono coworking",chronoSub:"Le temps restant de chaque client de coworking aujourd'hui. Un premier signal sonne {w} minutes avant la fin, puis une alarme quand le temps est écoulé.",
+  soundOff:"Le son est coupé. Touchez « Activer le son » pour entendre les alarmes (obligatoire sur téléphone et tablette).",
+  soundOn:"Activer le son",soundTest:"Tester l'alarme",soundReady:"Son activé",
+  keepAwake:"Garder l'écran allumé",awakeOn:"Écran maintenu allumé",fullscreen:"Plein écran",notifyBtn:"Notifications",notifyOn:"Notifications activées",
+  overdue:"Temps écoulé",running:"En cours",upcoming:"À venir aujourd'hui",finished:"Terminés",
+  endsIn:"Fin dans",startsIn:"Commence dans",over:"Dépassé de",endAt:"Fin à {t}",
+  left:"Client parti",extend30:"+30 min",extend60:"+1 h",reopen:"Rouvrir",remove:"Retirer",
+  extended:"Prolongé de {n} min",soonTitle:"Bientôt fini",soonMsg:"{n} : fin dans {m} min",doneTitle:"Temps écoulé",doneMsg:"{n} : le temps de coworking est terminé",
+  freeTitle:"Chrono libre (client sans réservation)",freeName:"Nom du client",duration:"Durée",startChrono:"Démarrer le chrono",
+  d30:"30 min",d60:"1 heure",d120:"2 heures",d240:"Demi-journée (4 h)",dClose:"Jusqu'à la fermeture du coworking",
+  noSessions:"Aucun client de coworking aujourd'hui pour le moment.",closedToday:"La galerie est fermée aujourd'hui.",
+  people:"pers.",fromBooking:"Réservation",walkIn:"Sans réservation"
+});
+Object.assign(window.T.en,{
+  chrono:"Timer",chronoTitle:"Coworking timer",chronoSub:"Time left for each coworking client today. A first chime sounds {w} minutes before the end, then an alarm when time is up.",
+  soundOff:"Sound is off. Tap “Turn on sound” to hear the alarms (required on phones and tablets).",
+  soundOn:"Turn on sound",soundTest:"Test the alarm",soundReady:"Sound on",
+  keepAwake:"Keep screen on",awakeOn:"Screen kept on",fullscreen:"Full screen",notifyBtn:"Notifications",notifyOn:"Notifications on",
+  overdue:"Time is up",running:"In progress",upcoming:"Later today",finished:"Finished",
+  endsIn:"Ends in",startsIn:"Starts in",over:"Over by",endAt:"Ends at {t}",
+  left:"Client has left",extend30:"+30 min",extend60:"+1 h",reopen:"Reopen",remove:"Remove",
+  extended:"Extended by {n} min",soonTitle:"Ending soon",soonMsg:"{n}: ends in {m} min",doneTitle:"Time is up",doneMsg:"{n}: coworking time is over",
+  freeTitle:"Free timer (client without booking)",freeName:"Client name",duration:"Duration",startChrono:"Start timer",
+  d30:"30 min",d60:"1 hour",d120:"2 hours",d240:"Half day (4 h)",dClose:"Until coworking closes",
+  noSessions:"No coworking clients today yet.",closedToday:"The gallery is closed today.",
+  people:"people",fromBooking:"Booking",walkIn:"Walk-in"
+});
