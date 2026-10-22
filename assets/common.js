@@ -26,8 +26,23 @@ function toast(m) {
 function header(active, links = true) {
   const nav = links ? `<nav class="topnav">
       <a href="staff.html" ${active === "staff" ? 'aria-current="page"' : ""}>${t("staff")}</a>
+      <a href="bookings.html" ${active === "bookings" ? 'aria-current="page"' : ""}>${t("bookings")}</a>
       <a href="admin.html" ${active === "admin" ? 'aria-current="page"' : ""}>${t("manager")}</a>
       <a href="poster.html" ${active === "poster" ? 'aria-current="page"' : ""}>${t("poster")}</a></nav>` : "";
+  // On phones the same links become a tab bar at the bottom of the screen
+  const I = {
+    staff: '<path d="M12 7v5l3 2"/><circle cx="12" cy="12" r="9"/>',
+    bookings: '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/>',
+    admin: '<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>',
+    poster: '<rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><path d="M14 14h3v3h-3zM18 18h3v3h-3z"/>'
+  };
+  const tab = (href, key, label) => `<a href="${href}" ${active === key ? 'aria-current="page"' : ""}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${I[key]}</svg><span>${label}</span></a>`;
+  if (links && !document.getElementById("tabbar")) {
+    const tb = document.createElement("nav"); tb.id = "tabbar"; tb.className = "tabbar"; document.body.appendChild(tb);
+    document.body.classList.add("has-tabbar");
+  }
+  const tb = document.getElementById("tabbar");
+  if (tb) tb.innerHTML = tab("staff.html", "staff", t("staff")) + tab("bookings.html", "bookings", t("bookings")) + tab("admin.html", "admin", t("manager")) + tab("poster.html", "poster", t("poster"));
   return `<header>
     <div class="brand"><div class="mark" aria-hidden="true"><span><i></i><i></i><i></i></span></div>
       <div><b>JACOBLEU</b><small>Art Gallery · Abidjan Plateau</small></div></div>

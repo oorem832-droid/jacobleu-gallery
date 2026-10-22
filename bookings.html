@@ -1,0 +1,488 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Jacobleu · Réservations</title>
+<meta name="robots" content="noindex">
+<link rel="icon" type="image/png" href="assets/favicon.png">
+<link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#13151C">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Jacobleu">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..900&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<div class="wrap">
+  <div id="hdr"></div>
+  <main id="app"><div class="loading">…</div></main>
+</div>
+<div id="drawer-root"></div>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<script src="assets/config.js"></script>
+<script src="assets/i18n.js"></script>
+<script src="assets/common.js"></script>
+<script src="assets/bookings-lib.js"></script>
+<script>
+// Room bookings: any active staff member can book, take payments and print invoices.
+const todayISO = isoDate(new Date());
+const mondayOf = s => { const d = parseD(s); d.setDate(d.getDate() - ((d.getDay() + 6) % 7)); return isoDate(d); };
+
+let S = {
+  ready: false, session: null, me: null, missing: false, err: "",
+  rooms: [], bookings: [], payments: [],
+  week: mondayOf(todayISO), day: todayISO, filter: "upcoming", q: "",
+  panel: null,        // {mode:'view'|'form', id, F (form draft), busy, confirmCancel, confirmVoid, payF}
+};
+
+async function load() {
+  Object.assign(S, await myProfile());
+  if (S.me) {
+    try {
+      const r = await sb.from("rooms").select("*").eq("active", true).order("sort");
+      if (r.error) throw r.error;
+      const [bk, pay] = await Promise.all([
+        fetchAllRows(() => sb.from("bookings").select("*").order("start_date")),
+        fetchAllRows(() => sb.from("payments").select("*").order("id"))
+      ]);
+      S.rooms = r.data; S.bookings = bk.map(b => ({ ...b, total: Number(b.total) })); S.payments = pay;
+      S.missing = false; S.err = "";
+    } catch (e) {
+      if (e && (e.code === "42P01" || e.code === "PGRST205" || /does not exist|schema cache/i.test(e.message || ""))) S.missing = true;
+      else S.err = t("netErr");
+    }
+  }
+  S.ready = true;
+  render();
+  // bookings.html#JAG-2026-0001 opens that booking
+  const h = decodeURIComponent(location.hash.slice(1));
+  if (h && !S.panel) { const b = S.bookings.find(x => x.ref === h); if (b) openView(b.id); }
+}
+
+const room = id => S.rooms.find(r => r.id === id);
+const rows = () => S.rooms.filter(r => r.occupies.length === 1 && r.occupies[0] === r.id);
+const stateOf = b => bookingState(b, S.payments);
+
+/* ------------------------------------------------------------- page */
+window.render = function () {
+  $("#hdr").innerHTML = header("bookings");
+  const app = $("#app");
+  if (!CONFIGURED) return app.innerHTML = setupNotice();
+  if (!S.ready) return app.innerHTML = `<div class="loading">${t("loading")}</div>`;
+  if (!S.session) return app.innerHTML = `<section class="view">${loginForm("sLoginSub")}</section>`;
+  if (!S.me) return app.innerHTML = `<section class="view"><div class="card locked"><p>${t("notStaff")}</p></div></section>`;
+  if (S.missing) return app.innerHTML = `<div class="notice">${t("needBookingsSql")}</div>`;
+  if (S.err) return app.innerHTML = `<div class="notice">${S.err}</div>`;
+
+  app.innerHTML = `<section class="view">
+    <div class="bk-bar">
+      <div><div class="eyebrow">${t("bookings")} · Jacobleu Art Gallery</div><h2 style="font-size:clamp(24px,4vw,34px);font-weight:900">${t("planning")}</h2></div>
+      <button class="btn" type="button" data-act="new">${t("newBooking")}</button>
+    </div>
+    <div class="bk-bar">
+      <div class="bk-week">
+        <button class="iconbtn" type="button" data-week="-7" aria-label="${t("prevWeek")}">‹</button>
+        <button class="iconbtn" type="button" data-week="7" aria-label="${t("nextWeek")}">›</button>
+        <b>${t("weekOf", { d: dmy(S.week) })}</b>
+        <button class="btn ghost" style="padding:6px 12px;font-size:13px" type="button" data-week="0">${t("today")}</button>
+      </div>
+      <p class="small" style="margin:0">${t("planningSub")}</p>
+    </div>
+    ${PHONE.matches ? dayView() : planning()}
+    <div class="legend2">${["pending", "confirmed", "paid"].map(k => `<span class="pill ${k}">${t("st_" + k)}</span>`).join("")}</div>
+    <div class="card" style="margin-top:20px">
+      <div class="tools"><div class="filters">${["upcoming", "due", "past", "cancelled", "all"].map(f => `<button type="button" data-filter="${f}" aria-pressed="${S.filter === f}">${t("f_" + f)}</button>`).join("")}</div>
+        <input id="bk-q" type="text" placeholder="${t("searchB")}" value="${esc(S.q)}"></div>
+      ${list()}
+    </div>
+  </section>`;
+  if (S.panel) { syncForm(); drawer(); }
+};
+
+function planning() {
+  const days = Array.from({ length: 7 }, (_, i) => addDays(S.week, i));
+  let h = `<div class="plan-wrap"><div class="plan"><div class="ph" style="grid-row:span 2"></div>`;
+  days.forEach(d => { const dt = parseD(d); h += `<div class="ph ${d === todayISO ? "today" : ""}" style="grid-column:span 2">${t("daysL")[(dt.getDay() + 6) % 7]} ${dt.getDate()}<small>${dmy(d).slice(0, 5)}</small></div>`; });
+  days.forEach(() => { h += `<div class="hh">${LANG === "en" ? "AM" : "Mat."}</div><div class="hh">${LANG === "en" ? "PM" : "A-midi"}</div>`; });
+  for (const r of rows()) {
+    h += `<div class="rl">${esc(r.name)}<small>${esc(r.capacity || "")}</small></div>`;
+    for (const d of days) {
+      const past = d < todayISO;
+      const am = S.bookings.filter(b => covers(b, S.rooms, r.id, d, "am"));
+      const pm = S.bookings.filter(b => covers(b, S.rooms, r.id, d, "pm"));
+      if (!r.per_person && am.length === 1 && pm.length === 1 && am[0].id === pm[0].id) {
+        h += `<div class="cell" style="grid-column:span 2">${chip(am[0])}</div>`;
+        continue;
+      }
+      // Coworking room: same people all day → one wide cell
+      if (r.per_person && am.length && am.map(b => b.id).join() === pm.map(b => b.id).join()) {
+        const used = am.reduce((a, b) => a + b.persons, 0), open = used < r.max_persons && !past;
+        h += `<div class="cell ${past ? "past" : ""} ${open ? "empty" : ""}" style="grid-column:span 2" ${open ? `data-slot="${r.id}|${d}|day"` : ""}>${am.map(chip).join("")}<div class="cnt">${t("places", { n: used, m: r.max_persons })}</div></div>`;
+        continue;
+      }
+      for (const [half, list] of [["am", am], ["pm", pm]]) {
+        if (r.per_person) {
+          const used = list.reduce((a, b) => a + b.persons, 0);
+          h += `<div class="cell ${past ? "past" : ""} ${used < r.max_persons && !past ? "empty" : ""}" ${used < r.max_persons && !past ? `data-slot="${r.id}|${d}|${half}"` : ""}>
+            ${list.map(chip).join("")}${used ? `<div class="cnt">${t("places", { n: used, m: r.max_persons })}</div>` : ""}</div>`;
+        } else if (list.length) {
+          h += `<div class="cell">${list.map(chip).join("")}</div>`;
+        } else {
+          h += `<div class="cell ${past ? "past" : "empty"}" ${past ? "" : `data-slot="${r.id}|${d}|${half}" title="${t("free")}"`}></div>`;
+        }
+      }
+    }
+  }
+  return h + `</div></div>`;
+}
+
+// Phones: one day at a time, rooms stacked
+const PHONE = window.matchMedia("(max-width: 720px)");
+PHONE.addEventListener ? PHONE.addEventListener("change", () => render()) : PHONE.addListener(() => render());
+
+function dayView() {
+  const days = Array.from({ length: 7 }, (_, i) => addDays(S.week, i));
+  if (!days.includes(S.day)) S.day = days.includes(todayISO) ? todayISO : days[0];
+  const d = S.day, past = d < todayISO;
+  const busy = x => S.bookings.some(b => !b.cancelled_at && x >= b.start_date && x <= b.end_date);
+  let h = `<div class="dayview"><div class="daystrip">${days.map(x => { const dt = parseD(x); return `<button type="button" data-day="${x}" aria-pressed="${x === d}" class="${x === todayISO ? "today" : ""}">
+      <small>${t("days")[(dt.getDay() + 6) % 7]}</small><b>${dt.getDate()}</b><i class="${busy(x) ? "on" : ""}"></i></button>`; }).join("")}</div>`;
+  for (const r of rows()) {
+    const am = S.bookings.filter(b => covers(b, S.rooms, r.id, d, "am"));
+    const pm = S.bookings.filter(b => covers(b, S.rooms, r.id, d, "pm"));
+    const free = half => past ? "" : `<button class="freebtn" type="button" data-slot="${r.id}|${d}|${half}">+ ${t("free")} · ${t("newBooking").toLowerCase()}</button>`;
+    const cell = (half, list) => {
+      if (r.per_person) {
+        const used = list.reduce((a, b) => a + b.persons, 0);
+        return `<div class="stack">${list.map(chip).join("")}${used ? `<span class="cnt" style="text-align:left">${t("places", { n: used, m: r.max_persons })}</span>` : ""}${used < r.max_persons ? free(half) : ""}</div>`;
+      }
+      return `<div class="stack">${list.length ? list.map(chip).join("") : free(half) || `<span class="pastnote">—</span>`}</div>`;
+    };
+    const whole = !r.per_person && am.length === 1 && pm.length === 1 && am[0].id === pm[0].id;
+    h += `<div class="roomcard"><h4>${esc(r.name)}<small>${esc(r.capacity || "")}</small></h4>
+      ${whole ? `<div class="slotrow"><span><b>${slotLabel("day")}</b>${SLOTS.day.hours}</span>${cell("day", am)}</div>`
+        : `<div class="slotrow"><span><b>${slotLabel("am")}</b>${SLOTS.am.hours}</span>${cell("am", am)}</div>
+           <div class="slotrow"><span><b>${slotLabel("pm")}</b>${SLOTS.pm.hours}</span>${cell("pm", pm)}</div>`}</div>`;
+  }
+  return h + `</div>`;
+}
+
+function chip(b) {
+  const st = stateOf(b), rm = room(b.room_id);
+  const sub = b.room_id === "both" ? (LANG === "en" ? "Both rooms" : "2 salles") : rm && rm.per_person ? b.persons + " pers." : (b.event_title || "");
+  return `<button class="chip ${st.key}" type="button" data-open="${b.id}" title="${esc(b.ref + " · " + b.client_name)}">${esc(b.client_org || b.client_name)}<small>${esc(sub)}</small></button>`;
+}
+
+function list() {
+  const q = S.q.toLowerCase().trim(), qd = digits(q);
+  let L = S.bookings.slice();
+  if (S.filter === "upcoming") L = L.filter(b => !b.cancelled_at && b.end_date >= todayISO);
+  if (S.filter === "due") L = L.filter(b => !b.cancelled_at && stateOf(b).balance > 0);
+  if (S.filter === "past") L = L.filter(b => !b.cancelled_at && b.end_date < todayISO).reverse();
+  if (S.filter === "cancelled") L = L.filter(b => b.cancelled_at).reverse();
+  if (S.filter === "all") L = L.reverse();
+  if (q) L = L.filter(b => [b.ref, b.client_name, b.client_org, b.event_title, b.client_email].join(" ").toLowerCase().includes(q) || (qd.length > 3 && digits(b.client_phone).includes(qd)));
+  if (!L.length) return `<div class="empty">${t("noBookings")}</div>`;
+  return `<div class="bk-list">${L.slice(0, 80).map(b => {
+    const st = stateOf(b), rm = room(b.room_id);
+    return `<button class="bk-row" type="button" data-open="${b.id}">
+      <span><b>${esc(b.client_org || b.client_name)}</b><span class="m"><br>${esc(b.ref)}${b.event_title ? " · " + esc(b.event_title) : ""}</span></span>
+      <span class="hide-s">${esc(rm ? rm.name : b.room_id)}<span class="m"><br>${dateRange(b)} · ${slotLabel(b.slot)}</span></span>
+      <span class="r hide-s">${fcfa(b.total)}${st.balance && st.key !== "cancelled" ? `<span class="m"><br>${t("balance")} ${fcfa(st.balance)}</span>` : ""}</span>
+      <span><span class="pill ${st.key}">${t("st_" + st.key)}</span></span>
+    </button>`;
+  }).join("")}</div>`;
+}
+
+/* ------------------------------------------------------------- drawer */
+function drawer() {
+  const root = $("#drawer-root");
+  if (!S.panel) { root.innerHTML = ""; document.body.style.overflow = ""; return; }
+  document.body.style.overflow = "hidden";
+  root.innerHTML = `<div class="backdrop" data-act="close"></div><aside class="drawer" role="dialog" aria-modal="true">${S.panel.mode === "form" ? formView() : detailView()}</aside>`;
+  if (S.panel.mode === "form") updateQuote();
+}
+function closePanel() { S.panel = null; drawer(); if (location.hash) history.replaceState(null, "", location.pathname); }
+
+function emptyDraft(roomId, date, slot) {
+  return { id: null, client_name: "", client_org: "", client_phone: "", client_email: "", event_title: "",
+    room_id: roomId || (S.rooms[0] && S.rooms[0].id), start_date: date || todayISO, end_date: date || todayISO,
+    slot: slot || "day", persons: 1, extras: [], discount: 0, notes: "" };
+}
+function openNew(roomId, date, slot) {
+  const F = emptyDraft(roomId, date, slot);
+  const r = room(F.room_id); if (r && r.price_half == null) F.slot = "day";
+  S.panel = { mode: "form", F, busy: false }; drawer(); $("#b-client")?.focus();
+}
+function openEdit(id) {
+  const b = S.bookings.find(x => x.id === id);
+  S.panel = { mode: "form", F: { ...b, extras: (b.extras || []).map(e => ({ ...e })), discount: Number(b.discount) }, busy: false }; drawer();
+}
+function openView(id) { S.panel = { mode: "view", id }; drawer(); }
+
+function formView() {
+  const F = S.panel.F, r = room(F.room_id) || {};
+  const slotOpt = s => `<label><input type="radio" name="b-slot" id="b-slot-${s}" value="${s}" ${F.slot === s ? "checked" : ""} ${s !== "day" && r.price_half == null ? "disabled" : ""}><span>${slotLabel(s)}<small>${SLOTS[s].hours}</small></span></label>`;
+  const showIncluded = (BILL.EVENT_ROOMS || []).includes(r.id);
+  return `<div class="dhead"><div><div class="eyebrow">${F.id ? esc(F.ref) : t("newBooking")}</div><h2>${F.id ? t("edit") : t("newBooking")}</h2></div>
+      <button class="iconbtn" type="button" data-act="close" aria-label="${t("close")}">✕</button></div>
+    <form id="bform" novalidate style="display:grid;gap:16px">
+      <fieldset><legend>${t("client")}</legend>
+        <label for="b-client">${t("clientName")} *<input id="b-client" data-f="client_name" type="text" value="${esc(F.client_name)}" required></label>
+        <label for="b-org">${t("clientOrg")}<input id="b-org" data-f="client_org" type="text" value="${esc(F.client_org || "")}"></label>
+        <div class="grid2">
+          <label for="b-phone">${t("clientPhone")}<input id="b-phone" data-f="client_phone" type="tel" inputmode="tel" value="${esc(F.client_phone || "")}" placeholder="07 00 00 00 00"></label>
+          <label for="b-email">${t("clientEmail")}<input id="b-email" data-f="client_email" type="email" value="${esc(F.client_email || "")}"></label>
+        </div>
+        <label for="b-event">${t("eventTitle")}<input id="b-event" data-f="event_title" type="text" value="${esc(F.event_title || "")}" placeholder="Séminaire, vernissage, formation…"></label>
+      </fieldset>
+      <fieldset><legend>${t("room")}</legend>
+        <label for="b-room">${t("room")}<select id="b-room" data-f="room_id">${S.rooms.map(x => `<option value="${x.id}" ${x.id === F.room_id ? "selected" : ""}>${esc(x.name)} · ${esc(x.capacity || "")}</option>`).join("")}</select></label>
+        <div class="small" style="margin-top:-4px">${r.per_person ? `${fcfa(r.price_half)} / pers. ½ j · ${fcfa(r.price_day)} / pers. j` : `${r.price_half != null ? fcfa(r.price_half) + " ½ j · " : ""}${fcfa(r.price_day)} ${LANG === "en" ? "day" : "journée"}`}</div>
+        <div class="grid2">
+          <label for="b-start">${t("startDate")}<input id="b-start" data-f="start_date" type="date" value="${F.start_date}"></label>
+          <label for="b-end">${t("endDate")}<input id="b-end" data-f="end_date" type="date" value="${F.end_date}" min="${F.start_date}"></label>
+        </div>
+        <div style="display:grid;gap:6px"><span style="font-size:13px;font-weight:500">${t("slot")}</span><div class="seg2">${["am", "pm", "day"].map(slotOpt).join("")}</div></div>
+        <label for="b-persons">${r.per_person ? t("personsPer") : t("persons")} <span class="small">(${t("personsMax", { n: r.max_persons })})</span>
+          <input id="b-persons" data-f="persons" type="number" min="1" max="${r.max_persons}" value="${F.persons}"></label>
+        ${showIncluded ? `<p class="small" style="margin:0"><b>${t("included")} :</b> ${esc((BILL.INCLUDED || []).join(", "))}</p>` : ""}
+      </fieldset>
+      <fieldset><legend>${t("extras")}</legend>
+        <div id="xrows" style="display:grid;gap:8px">${F.extras.map((e, i) => `<div class="xrow">
+          <input type="text" id="x-l-${i}" data-x="${i}" data-xf="label" value="${esc(e.label)}" placeholder="${t("extraLabel")}" aria-label="${t("extraLabel")}">
+          <input type="number" id="x-a-${i}" data-x="${i}" data-xf="amount" min="0" step="1000" value="${e.amount}" placeholder="${t("extraAmount")}" aria-label="${t("extraAmount")}">
+          <button type="button" data-xdel="${i}" aria-label="✕">✕</button></div>`).join("")}</div>
+        <div class="linkbtns"><button type="button" data-xadd="sec">${t("addSecurity")}</button><button type="button" data-xadd="cocktail">${t("addCocktail")}</button><button type="button" data-xadd="">${t("addOther")}</button></div>
+        <div class="grid2">
+          <label for="b-discount">${t("discount")} (FCFA)<input id="b-discount" data-f="discount" type="number" min="0" step="1000" value="${F.discount || 0}"></label>
+        </div>
+        <label for="b-notes">${t("notes")}<textarea class="in" id="b-notes" data-f="notes">${esc(F.notes || "")}</textarea></label>
+      </fieldset>
+      <div id="bwarn"></div>
+      <div id="bquote"></div>
+      <div class="err" id="berr" role="alert"></div>
+      <div class="actions stick"><button class="btn" type="submit" ${S.panel.busy ? "disabled" : ""}>${S.panel.busy ? t("saving") : t("save")}</button>
+        <button class="btn ghost" type="button" data-act="${F.id ? "back" : "close"}">${t("cancel")}</button></div>
+    </form>`;
+}
+
+// Live price and availability, without re-rendering the inputs
+function updateQuote() {
+  const F = S.panel.F, r = room(F.room_id);
+  const q = quote(r, F.slot, F.start_date, F.end_date, Number(F.persons), F.extras, F.discount);
+  const box = $("#bquote"), warn = $("#bwarn");
+  if (!box) return;
+  if (!q) { box.innerHTML = ""; warn.innerHTML = ""; return; }
+  if (q.error) { box.innerHTML = ""; warn.innerHTML = `<div class="warn">${t("dayOnly")}</div>`; return; }
+  const dep = Math.ceil(q.total * (BILL.DEPOSIT_PERCENT ?? 50) / 100);
+  box.innerHTML = `<div class="sum">
+    <div><span>${t("roomLine")} · ${slotLabel(F.slot)} · ${t(q.days > 1 ? "daysN" : "days1", { n: q.days })}${r.per_person ? " " + t("perPers", { n: q.per }) : ""}</span><span>${fcfa(q.roomAmount)}</span></div>
+    ${q.extras ? `<div><span>${t("extras")}</span><span>${fcfa(q.extras)}</span></div>` : ""}
+    ${q.discount ? `<div><span>${t("discount")}</span><span>− ${fcfa(q.discount)}</span></div>` : ""}
+    <div class="tot"><span>${t("total")}</span><span>${fcfa(q.total)}</span></div>
+    <div class="muted"><span>${t("deposit", { p: BILL.DEPOSIT_PERCENT ?? 50 })}</span><span>${fcfa(dep)}</span></div></div>`;
+  // availability check (the database checks again when saving)
+  let msg = "";
+  const others = S.bookings.filter(b => !b.cancelled_at && b.id !== F.id && b.start_date <= F.end_date && b.end_date >= F.start_date);
+  if (r && !r.per_person) {
+    const c = others.find(b => { const br = room(b.room_id); return br && br.occupies.some(o => r.occupies.includes(o)) && (b.slot === "day" || F.slot === "day" || b.slot === F.slot); });
+    if (c) msg = t("conflict", { r: esc(room(c.room_id).name), c: esc(c.ref + " · " + (c.client_org || c.client_name)) });
+  } else if (r) {
+    let minLeft = r.max_persons;
+    for (let d = F.start_date; d <= F.end_date && d; d = addDays(d, 1)) {
+      for (const h of F.slot === "day" ? ["am", "pm"] : [F.slot]) {
+        const used = others.filter(b => b.room_id === r.id && d >= b.start_date && d <= b.end_date && (b.slot === "day" || b.slot === h)).reduce((a, b) => a + b.persons, 0);
+        minLeft = Math.min(minLeft, r.max_persons - used);
+      }
+      if (daysBetween(F.start_date, d) > 90) break;
+    }
+    if (minLeft < Number(F.persons)) msg = t("full", { n: Math.max(minLeft, 0) });
+  }
+  warn.innerHTML = msg ? `<div class="warn">${msg}</div>` : "";
+}
+
+function detailView() {
+  const b = S.bookings.find(x => x.id === S.panel.id);
+  if (!b) return "";
+  const st = stateOf(b), r = room(b.room_id) || { name: b.room_id };
+  const pays = S.payments.filter(p => p.booking_id === b.id);
+  const isMgr = S.me.role === "manager";
+  const P = S.panel;
+  const defAmt = st.depositDue > 0 ? st.depositDue : st.balance;
+  return `<div class="dhead"><div><div class="eyebrow">${esc(b.ref)}</div><h2>${esc(b.client_org || b.client_name)}</h2>
+      <div style="margin-top:6px"><span class="pill ${st.key}">${t("st_" + st.key)}</span></div></div>
+      <button class="iconbtn" type="button" data-act="close" aria-label="${t("close")}">✕</button></div>
+    <dl class="kv">
+      <dt>${t("client")}</dt><dd>${esc(b.client_name)}${b.client_org ? " · " + esc(b.client_org) : ""}</dd>
+      ${b.client_phone ? `<dt>${t("clientPhone")}</dt><dd class="num">${esc(b.client_phone)}</dd>` : ""}
+      ${b.client_email ? `<dt>${t("clientEmail")}</dt><dd>${esc(b.client_email)}</dd>` : ""}
+      ${b.event_title ? `<dt>${t("event")}</dt><dd>${esc(b.event_title)}</dd>` : ""}
+      <dt>${t("room")}</dt><dd>${esc(r.name)}</dd>
+      <dt>Date</dt><dd>${dateRange(b)}</dd>
+      <dt>${t("slot")}</dt><dd>${slotLabel(b.slot)} · ${SLOTS[b.slot].hours}</dd>
+      <dt>${t("persons")}</dt><dd>${b.persons}</dd>
+      ${b.notes ? `<dt>${t("notes")}</dt><dd>${esc(b.notes)}</dd>` : ""}
+      ${b.cancelled_at ? `<dt>${t("st_cancelled")}</dt><dd>${new Date(b.cancelled_at).toLocaleDateString("fr-FR")}${b.cancel_reason ? " · " + esc(b.cancel_reason) : ""}</dd>` : ""}
+    </dl>
+    <div class="sum">
+      <div><span>${t("roomLine")} · ${t(b.days > 1 ? "daysN" : "days1", { n: b.days })}${r.per_person ? " " + t("perPers", { n: b.persons }) : ""}</span><span>${fcfa(b.room_amount)}</span></div>
+      ${(b.extras || []).map(e => `<div><span>${esc(e.label)}</span><span>${fcfa(e.amount)}</span></div>`).join("")}
+      ${Number(b.discount) ? `<div><span>${t("discount")}</span><span>− ${fcfa(b.discount)}</span></div>` : ""}
+      <div class="tot"><span>${t("total")}</span><span>${fcfa(b.total)}</span></div>
+      <div class="muted"><span>${t("deposit", { p: BILL.DEPOSIT_PERCENT ?? 50 })}</span><span>${fcfa(st.deposit)}</span></div>
+      <div><span>${t("paid")}</span><span>${fcfa(st.paid)}</span></div>
+      <div style="font-weight:700"><span>${t("balance")}</span><span>${fcfa(st.balance)}</span></div>
+    </div>
+    <div class="actions">
+      <a class="btn dark" href="doc.html?b=${b.id}" target="_blank" rel="noopener">${st.paid ? t("invoice") : t("proforma")}</a>
+      ${b.client_phone && !b.cancelled_at ? `<a class="btn ghost" href="${waLink(b, st, r)}" target="_blank" rel="noopener">${t("sendWa")}</a>` : ""}
+      ${!b.cancelled_at ? `<button class="btn ghost" type="button" data-act="edit">${t("edit")}</button>` : ""}
+    </div>
+    <fieldset><legend>${t("payments")}</legend>
+      <div class="paylist">${pays.length ? pays.map(p => `<div>
+        <span class="${p.voided_at ? "void" : ""}"><b class="num">${fcfa(p.amount)}</b> · ${METHODS[p.method] || p.method}${p.reference ? " · " + esc(p.reference) : ""}<br><span class="small">${dmy(p.paid_on)} · ${esc(b.ref)}-R${p.n}${p.voided_at ? " · " + t("voided") : ""}</span></span>
+        <span style="display:flex;gap:12px">${!p.voided_at ? `<a href="doc.html?b=${b.id}&r=${p.n}" target="_blank" rel="noopener">${t("receipt")}</a>` : ""}
+        ${isMgr && !p.voided_at ? `<button class="lnk" type="button" data-void="${p.id}">${P.confirmVoid === p.id ? t("voidConfirm") : t("voidPay")}</button>` : ""}</span></div>`).join("") : `<p class="small" style="margin:0">${t("noPayments")}</p>`}</div>
+      ${!b.cancelled_at && st.balance > 0 ? `<form id="payform" novalidate style="display:grid;gap:10px">
+        <div class="linkbtns">${st.depositDue > 0 ? `<button type="button" data-amt="${st.depositDue}">${t("payDeposit")} ${fcfa(st.depositDue)}</button>` : ""}<button type="button" data-amt="${st.balance}">${t("payBalance")} ${fcfa(st.balance)}</button></div>
+        <div class="grid2">
+          <label for="p-amount">${t("amount")}<input id="p-amount" type="number" min="1" max="${st.balance}" value="${defAmt}"></label>
+          <label for="p-method">${t("method")}<select id="p-method">${Object.entries(METHODS).map(([k, v]) => `<option value="${k}">${v}</option>`).join("")}</select></label>
+          <label for="p-ref">${t("payRef")}<input id="p-ref" type="text"></label>
+          <label for="p-date">${t("payDate")}<input id="p-date" type="date" value="${todayISO}" max="${todayISO}"></label>
+        </div>
+        <div class="err" id="perr" role="alert"></div>
+        <button class="btn" type="submit" ${P.busy ? "disabled" : ""}>${t("addPayment")}</button>
+      </form>` : ""}
+    </fieldset>
+    ${!b.cancelled_at ? `<fieldset><legend>${t("cancelBooking")}</legend>
+      ${P.confirmCancel ? `<label for="c-reason">${t("cancelReason")}<input id="c-reason" type="text"></label>
+        <div class="actions"><button class="btn dark" type="button" data-act="docancel">${t("cancelConfirm")}</button><button class="btn ghost" type="button" data-act="nocancel">${t("close")}</button></div>`
+      : `<button class="btn ghost" type="button" data-act="askcancel">${t("cancelBooking")}</button>`}
+    </fieldset>` : ""}
+    <p class="small" style="margin:0">${new Date(b.created_at).toLocaleString("fr-FR", { dateStyle: "short", timeStyle: "short" })} · ${esc(b.ref)}</p>`;
+}
+
+function waLink(b, st, r) {
+  let ph = digits(b.client_phone); if (ph.length === 10) ph = "225" + ph;
+  const F = window.T.fr;
+  const payline = st.key === "paid" ? "• Réservation entièrement réglée. Merci !"
+    : st.depositDue > 0 ? `• Acompte à verser pour confirmer (${BILL.DEPOSIT_PERCENT ?? 50} %) : ${fcfa(st.depositDue)}`
+    : `• Déjà réglé : ${fcfa(st.paid)}\n• Reste à payer avant l'événement : ${fcfa(st.balance)}`;
+  let msg = F.waRecap;
+  const vars = { n: b.client_name, ref: b.ref, room: r.name, dates: b.start_date === b.end_date ? dmy(b.start_date) : "du " + dmy(b.start_date) + " au " + dmy(b.end_date),
+    slot: SLOTS[b.slot].fr + " (" + SLOTS[b.slot].hours + ")", total: fcfa(b.total), payline,
+    methods: (BILL.PAYMENT_METHODS || []).map(m => "🔹 " + m).join("\n"), cond: BILL.CONDITIONS || "" };
+  for (const k in vars) msg = msg.replace("{" + k + "}", vars[k]);
+  return "https://wa.me/" + ph + "?text=" + encodeURIComponent(msg.replace(/ /g, " "));
+}
+
+/* ------------------------------------------------------------- events */
+document.addEventListener("click", async e => {
+  const el = e.target;
+  const wk = el.closest("[data-week]");
+  if (wk) { const n = +wk.dataset.week; S.week = n ? addDays(S.week, n) : mondayOf(todayISO); S.day = n ? S.week : todayISO; render(); return; }
+  const dy = el.closest("[data-day]"); if (dy) { S.day = dy.dataset.day; render(); return; }
+  const fl = el.closest("[data-filter]"); if (fl) { S.filter = fl.dataset.filter; render(); return; }
+  const op = el.closest("[data-open]"); if (op) { openView(+op.dataset.open); return; }
+  const sl = el.closest("[data-slot]"); if (sl) { const [r, d, h] = sl.dataset.slot.split("|"); openNew(r, d, h); return; }
+  const xa = el.closest("[data-xadd]");
+  if (xa) { syncForm(); S.panel.F.extras.push({ label: xa.dataset.xadd ? t(xa.dataset.xadd) : "", amount: "" }); drawer(); const i = S.panel.F.extras.length - 1; (xa.dataset.xadd ? $("#x-a-" + i) : $("#x-l-" + i))?.focus(); return; }
+  const xd = el.closest("[data-xdel]"); if (xd) { syncForm(); S.panel.F.extras.splice(+xd.dataset.xdel, 1); drawer(); return; }
+  const am = el.closest("[data-amt]"); if (am) { $("#p-amount").value = am.dataset.amt; return; }
+  const vd = el.closest("[data-void]");
+  if (vd) {
+    const id = +vd.dataset.void;
+    if (S.panel.confirmVoid !== id) { S.panel.confirmVoid = id; drawer(); return; }
+    const { error } = await sb.rpc("void_payment", { p_id: id });
+    if (error) return toast(dbError(error));
+    await refresh(); return;
+  }
+  const a = el.closest("[data-act]"); if (!a) return;
+  const act = a.dataset.act;
+  if (act === "new") openNew();
+  if (act === "close") closePanel();
+  if (act === "edit") openEdit(S.panel.id);
+  if (act === "back") openView(S.panel.F.id);
+  if (act === "askcancel") { S.panel.confirmCancel = true; drawer(); $("#c-reason")?.focus(); }
+  if (act === "nocancel") { S.panel.confirmCancel = false; drawer(); }
+  if (act === "docancel") {
+    const { error } = await sb.rpc("cancel_booking", { p_id: S.panel.id, p_reason: $("#c-reason").value });
+    if (error) return toast(dbError(error));
+    toast(t("bookingCancelled")); S.panel.confirmCancel = false; await refresh();
+  }
+});
+
+// Keep the draft in sync with the inputs
+function syncForm() {
+  if (!S.panel || S.panel.mode !== "form") return;
+  const F = S.panel.F;
+  document.querySelectorAll("#bform [data-f]").forEach(i => { F[i.dataset.f] = i.value; });
+  document.querySelectorAll("#bform [data-x]").forEach(i => { F.extras[+i.dataset.x][i.dataset.xf] = i.value; });
+  const s = document.querySelector("input[name=b-slot]:checked"); if (s) F.slot = s.value;
+  F.persons = Math.max(1, parseInt(F.persons) || 1); F.discount = Math.max(0, parseInt(F.discount) || 0);
+}
+document.addEventListener("input", e => {
+  if (e.target.id === "bk-q") { S.q = e.target.value; const pos = e.target.selectionStart; render(); const i = $("#bk-q"); i.focus(); i.setSelectionRange(pos, pos); return; }
+  if (e.target.closest("#bform")) { syncForm(); updateQuote(); }
+});
+document.addEventListener("change", e => {
+  if (!e.target.closest("#bform")) return;
+  syncForm();
+  const F = S.panel.F;
+  if (e.target.id === "b-room") { const r = room(F.room_id); if (r.price_half == null) F.slot = "day"; F.persons = Math.min(F.persons, r.max_persons); drawer(); }
+  if (e.target.id === "b-start" && F.end_date < F.start_date) { F.end_date = F.start_date; drawer(); }
+  updateQuote();
+});
+
+document.addEventListener("submit", async e => {
+  if (e.target.id === "login") { e.preventDefault(); if (await doLogin(e)) { S.ready = false; render(); load(); } return; }
+  if (e.target.id === "bform") {
+    e.preventDefault(); syncForm();
+    const F = S.panel.F, err = $("#berr");
+    if ((F.client_name || "").trim().length < 2) { err.textContent = t("errName"); $("#b-client").focus(); return; }
+    S.panel.busy = true; drawer();
+    const { data, error } = await sb.rpc("save_booking", {
+      p_id: F.id, p_client_name: F.client_name, p_client_org: F.client_org, p_client_phone: F.client_phone, p_client_email: F.client_email,
+      p_event_title: F.event_title, p_room: F.room_id, p_start: F.start_date, p_end: F.end_date, p_slot: F.slot,
+      p_persons: F.persons, p_extras: F.extras.map(x => ({ label: x.label, amount: String(parseInt(x.amount) || 0) })),
+      p_discount: F.discount, p_notes: F.notes
+    });
+    S.panel.busy = false;
+    if (error) { drawer(); $("#berr").textContent = dbError(error); return; }
+    toast(t("saved"));
+    await refresh(); openView(data.id);
+    return;
+  }
+  if (e.target.id === "payform") {
+    e.preventDefault();
+    const amount = parseInt($("#p-amount").value) || 0;
+    if (amount <= 0) { $("#perr").textContent = t("amount"); return; }
+    S.panel.busy = true;
+    const { error } = await sb.rpc("add_payment", { p_booking: S.panel.id, p_amount: amount, p_method: $("#p-method").value, p_reference: $("#p-ref").value, p_paid_on: $("#p-date").value || todayISO });
+    S.panel.busy = false;
+    if (error) { $("#perr").textContent = dbError(error); return; }
+    toast(t("paySaved")); await refresh();
+  }
+});
+document.addEventListener("keydown", e => { if (e.key === "Escape" && S.panel) closePanel(); });
+
+async function refresh() {
+  const keep = S.panel;
+  await load();
+  S.panel = keep && keep.mode === "view" ? { mode: "view", id: keep.id } : keep;
+  drawer();
+}
+
+render();
+if (CONFIGURED) load();
+</script>
+</body>
+</html>

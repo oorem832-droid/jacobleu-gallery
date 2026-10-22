@@ -10,6 +10,8 @@ dashboard of visits, peak hours, busiest days, regular visitors and a WhatsApp l
 | `staff.html` | Each staff member | Sign in, clock in / clock out, see own last 7 days. |
 | `admin.html` | Jacob (manager) | Full dashboard, visitor list, staff attendance, WhatsApp export, CSV download. |
 | `poster.html` | Manager | Printable A4/A3 poster with the QR code. |
+| `bookings.html` | Staff and manager | Room planning, bookings, payments, invoices. |
+| `doc.html` | Staff and manager | Printable invoice (facture / proforma) and receipt (reçu). |
 
 **How it fits together:** the pages are plain HTML files (no build step) hosted for free
 on Vercel from a GitHub repository. The data and the logins live in Supabase.
@@ -26,13 +28,18 @@ jacobleu-gallery/
 ├── staff.html          staff clock-in / out
 ├── admin.html          manager dashboard
 ├── poster.html         printable QR poster
+├── bookings.html       room bookings (staff)
+├── doc.html            invoice / receipt, print or save as PDF
 ├── assets/
 │   ├── config.js       ← the only file you edit (Supabase address + key)
 │   ├── common.js       shared code
+│   ├── bookings-lib.js booking helpers (prices, status, amount in words)
+│   ├── logo.png        logo used on invoices
 │   ├── i18n.js         French / English text
 │   └── style.css       design
 └── supabase/
     ├── schema.sql      database tables + security rules (run once)
+    ├── bookings.sql    rooms, prices, bookings, payments (run once, after schema.sql)
     └── add-staff.sql   register the manager and staff accounts
 ```
 
@@ -173,6 +180,56 @@ A WhatsApp **Channel** cannot be filled from a list of numbers: people must foll
 themselves, so share the Channel link in your broadcast.
 
 ---
+
+## Step 11 · Turn on room bookings and invoices
+
+1. Supabase → **SQL Editor → New query**, paste `supabase/bookings.sql`, click **Run**.
+   This creates the rooms with your price list:
+
+   | Salle | Demi-journée | Journée |
+   |---|---|---|
+   | Salle de conférence (80 à 100 places) | 200 000 | 400 000 |
+   | Grande salle d'exposition (200 places) | 400 000 | 700 000 |
+   | Les 2 salles | — | 1 000 000 |
+   | Salle de réunion (15 places) | 75 000 | 100 000 |
+   | Salle standard / coworking (max 10) | 5 000 / pers. | 10 000 / pers. |
+
+2. Upload the new files to GitHub (`bookings.html`, `doc.html`, the `assets` folder).
+3. Optional: scan the gérante's signature, save it as `assets/signature.png` and upload it.
+   It then appears at the bottom of every invoice and receipt.
+4. Check the company details at the bottom of `assets/config.js` (`BILLING`): RCCM, address,
+   payment numbers, "La Gérante".
+
+**How staff use it** (`…/bookings.html`, same login as clock-in):
+
+- Tap a free half-day on the planning, or **Nouvelle réservation**.
+- Enter the client, room, dates, créneau (Matin 09h30–13h30, Après-midi 14h00–18h00, Journée),
+  extras (agents de sécurité, cocktail) and any discount. The price is calculated automatically.
+- The system refuses double bookings. "Les 2 salles" blocks both rooms. The coworking room
+  is shared up to 10 places.
+- **Facture proforma** → print or "Enregistrer en PDF", then send it (WhatsApp button included).
+- When the client pays: **Enregistrer un paiement** (amount, OM / Wave / chèque / TPE / espèces,
+  reference). The status changes automatically:
+  *En attente d'acompte* → *Confirmée* (50 % paid) → *Soldée* (100 % paid).
+- Each payment has its own **Reçu** (JAG-2026-0001-R1, R2…).
+- Invoice numbers are automatic: JAG-2026-0001, JAG-2026-0002…
+
+**What only Jacob can do:** cancel a payment entered by mistake, and change room prices
+(Supabase → Table Editor → `rooms` → edit `price_half` / `price_day`).
+His dashboard shows money collected, amount booked, balances still to collect, and revenue per room.
+
+## Step 12 · Install it on staff phones (like an app)
+
+The site works on any phone browser. On phones the menu moves to a tab bar at the bottom
+(Personnel · Réservations · Direction · Affiche QR) and the room planning shows one day at a time.
+
+To put the Jacobleu icon on the home screen:
+
+- **iPhone (Safari):** open `…/staff.html` → Share button → **Sur l'écran d'accueil** → Ajouter.
+- **Android (Chrome):** open `…/staff.html` → ⋮ menu → **Installer l'application** (or "Ajouter à l'écran d'accueil").
+
+It then opens full screen, straight on the staff page, with no address bar.
+Visitors don't need this: they just scan the QR code.
 
 ## Looking after it
 

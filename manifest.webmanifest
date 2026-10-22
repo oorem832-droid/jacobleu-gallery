@@ -1,0 +1,15 @@
+{
+  "name": "Jacobleu Art Gallery",
+  "short_name": "Jacobleu",
+  "description": "Espace personnel, réservations et tableau de bord de Jacobleu Art Gallery",
+  "start_url": "./staff.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#F4F5F8",
+  "theme_color": "#13151C",
+  "lang": "fr",
+  "icons": [
+    { "src": "assets/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "assets/icon-512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}

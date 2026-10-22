@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Jacobleu · Facture</title>
+<meta name="robots" content="noindex">
+<link rel="icon" type="image/png" href="assets/favicon.png">
+<link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+<style>
+/* Invoice / receipt. Always printed in light colours on A4. */
+:root{--ink:#13151C;--muted:#5C6174;--line:#D5D9E4;--bleu:#1F49B6;--orange:#E8822A;--paper:#FFFFFF;--desk:#E9ECF2;color-scheme:light}
+*{box-sizing:border-box}
+body{margin:0;background:var(--desk);color:var(--ink);font-family:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;font-size:13px;line-height:1.45}
+.bar{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;padding:16px}
+.bar a,.bar button{border:1px solid var(--line);background:#fff;color:var(--ink);padding:10px 16px;border-radius:10px;font:inherit;font-weight:600;cursor:pointer;text-decoration:none}
+.bar .main{background:var(--bleu);border-color:var(--bleu);color:#fff}
+.sheet{width:210mm;max-width:100%;min-height:297mm;margin:0 auto 32px;background:var(--paper);padding:16mm 15mm 14mm;display:flex;flex-direction:column;gap:18px;box-shadow:0 10px 40px -20px rgba(0,0,0,.35)}
+.top{display:flex;justify-content:space-between;gap:20px;align-items:flex-start;flex-wrap:wrap}
+.top img{width:62mm;max-width:100%;height:auto}
+.co{text-align:right;font-size:11.5px;color:var(--muted);line-height:1.5}
+.co b{color:var(--ink);font-size:12.5px}
+.title{display:flex;justify-content:space-between;align-items:flex-end;gap:16px;border-bottom:2px solid var(--bleu);padding-bottom:10px;flex-wrap:wrap}
+.title h1{margin:0;font-size:24px;letter-spacing:.04em;color:var(--bleu);font-weight:700}
+.title .meta{font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:12px;text-align:right}
+.parties{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.box{border:1px solid var(--line);border-radius:6px;padding:10px 12px}
+.box h3{margin:0 0 4px;font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+table{width:100%;border-collapse:collapse}
+th{background:var(--bleu);color:#fff;text-align:left;font-size:11px;letter-spacing:.06em;text-transform:uppercase;padding:7px 8px;font-weight:600}
+td{padding:9px 8px;border-bottom:1px solid var(--line);vertical-align:top}
+td small{color:var(--muted);display:block}
+.r{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}
+.totals{margin-left:auto;width:min(95mm,100%);display:grid;gap:0}
+.totals div{display:flex;justify-content:space-between;padding:6px 8px;border-bottom:1px solid var(--line)}
+.totals .grand{background:var(--bleu);color:#fff;font-weight:700;font-size:15px;border:0}
+.totals .due{font-weight:700}
+.words{font-size:12.5px;border-left:3px solid var(--orange);padding:6px 10px;background:#FFF7EF}
+.cols{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.cols ul{margin:4px 0 0;padding-left:16px}
+.sign{display:flex;justify-content:flex-end}
+.sign div{text-align:center;min-width:60mm}
+.sign img{max-height:26mm;max-width:60mm;display:block;margin:6px auto}
+.sign .line{height:22mm}
+.foot{margin-top:auto;border-top:1px solid var(--line);padding-top:8px;text-align:center;font-size:10.5px;color:var(--muted)}
+.rcpt-amt{font-size:22px;font-weight:700;color:var(--bleu)}
+.stamp{display:inline-block;border:2px solid var(--bleu);color:var(--bleu);padding:3px 10px;border-radius:4px;font-weight:700;letter-spacing:.08em;transform:rotate(-4deg);font-size:12px}
+.stamp.cancel{border-color:#B3261E;color:#B3261E}
+.msg{max-width:520px;margin:60px auto;background:#fff;padding:24px;border-radius:12px;text-align:center}
+@media (max-width:640px){.sheet{padding:18px 16px;min-height:0}.parties,.cols{grid-template-columns:1fr}.co{text-align:left}}
+@page{size:A4;margin:0}
+@media print{
+  body{background:#fff}
+  .bar{display:none}
+  .sheet{box-shadow:none;margin:0;width:210mm;min-height:297mm}
+  th,.totals .grand,.words{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+}
+</style>
+</head>
+<body>
+<div id="app"><div class="msg">…</div></div>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<script src="assets/config.js"></script>
+<script src="assets/i18n.js"></script>
+<script src="assets/common.js"></script>
+<script src="assets/bookings-lib.js"></script>
+<script>
+// Invoices and receipts are always in French.
+LANG = "fr";
+const qs = new URLSearchParams(location.search);
+const bookingId = +qs.get("b"), receiptN = qs.get("r") ? +qs.get("r") : null;
+const C = window.JACOBLEU_CONFIG || {};
+
+async function main() {
+  const app = document.getElementById("app");
+  if (!CONFIGURED) return app.innerHTML = `<div class="msg">${t("setup")}</div>`;
+  const { data: { session } } = await sb.auth.getSession();
+  if (!session) return app.innerHTML = `<div class="msg">Connectez-vous d'abord dans l'espace personnel.<br><br><a href="staff.html">Espace personnel</a></div>`;
+  const [b, p] = await Promise.all([
+    sb.from("bookings").select("*").eq("id", bookingId).maybeSingle(),
+    sb.from("payments").select("*").eq("booking_id", bookingId).order("n")
+  ]);
+  if (b.error || !b.data) return app.innerHTML = `<div class="msg">Document introuvable.</div>`;
+  const r = await sb.from("rooms").select("*").eq("id", b.data.room_id).maybeSingle();
+  render(b.data, p.data || [], r.data || { name: b.data.room_id });
+}
+
+function render(b, pays, room) {
+  const st = bookingState(b, pays);
+  const pay = receiptN ? pays.find(x => x.n === receiptN && !x.voided_at) : null;
+  if (receiptN && !pay) return document.getElementById("app").innerHTML = `<div class="msg">Reçu introuvable ou annulé.</div>`;
+  const kind = pay ? "RECU" : st.paid > 0 ? "FACTURE" : "FACTURE PROFORMA";
+  const number = pay ? `${b.ref}-R${pay.n}` : b.ref;
+  const docDate = pay ? pay.paid_on : b.created_at.slice(0, 10);
+  document.title = (pay ? "Reçu " : "Facture ") + number + " · " + (b.client_org || b.client_name);
+  const isEvent = (BILL.EVENT_ROOMS || []).includes(b.room_id);
+  const sigImg = BILL.SIGNATURE_IMAGE ? `<img src="${esc(BILL.SIGNATURE_IMAGE)}" alt="" onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'line'}))">` : `<div class="line"></div>`;
+
+  const header = `<div class="top"><img src="assets/logo.png" alt="Jacobleu Art Gallery">
+      <div class="co"><b>${esc(BILL.COMPANY || "Jacobleu Art Gallery")}</b><br>${esc(C.ADDRESS || "")}<br>${esc(BILL.PHONE || "")} · ${esc(C.EMAIL || "")}${BILL.RCCM ? "<br>RCCM : " + esc(BILL.RCCM) : ""}</div></div>
+    <div class="title"><h1>${kind === "RECU" ? "REÇU" : kind}</h1>
+      <div class="meta">N° ${esc(number)}<br>Date : ${dmy(docDate)}${b.cancelled_at ? `<br><span class="stamp cancel">ANNULÉE</span>` : st.key === "paid" && !pay ? `<br><span class="stamp">PAYÉE</span>` : ""}</div></div>`;
+  const clientBox = `<div class="box"><h3>${pay ? "Reçu de" : "Facturé à"}</h3><b>${esc(b.client_org || b.client_name)}</b>${b.client_org ? "<br>" + esc(b.client_name) : ""}${b.client_phone ? "<br>" + esc(b.client_phone) : ""}${b.client_email ? "<br>" + esc(b.client_email) : ""}</div>`;
+  const eventBox = `<div class="box"><h3>Réservation</h3>${b.event_title ? "<b>" + esc(b.event_title) + "</b><br>" : ""}${esc(room.name)}<br>${dateRange(b)}<br>${SLOTS[b.slot].fr} · ${SLOTS[b.slot].hours}</div>`;
+  const signature = `<div class="sign"><div>${esc(BILL.SIGNATORY_TITLE || "")}${sigImg}${BILL.SIGNATORY_NAME ? "<b>" + esc(BILL.SIGNATORY_NAME) + "</b>" : ""}</div></div>`;
+  const footer = `<div class="foot">${esc(BILL.COMPANY || "")} · ${esc(C.ADDRESS || "")} · ${esc(BILL.PHONE || "")} · ${esc(C.EMAIL || "")}${BILL.RCCM ? " · RCCM " + esc(BILL.RCCM) : ""}</div>`;
+
+  let body;
+  if (pay) {
+    const before = pays.filter(x => !x.voided_at && x.n <= pay.n).reduce((a, x) => a + Number(x.amount), 0);
+    const left = Math.max(Number(b.total) - before, 0);
+    const what = pay.n === 1 && left > 0 ? "Acompte" : left === 0 ? "Solde" : "Paiement partiel";
+    body = `${header}
+      <div class="parties">${clientBox}${eventBox}</div>
+      <div class="box" style="display:grid;gap:8px">
+        <div>Nous reconnaissons avoir reçu la somme de</div>
+        <div class="rcpt-amt">${fcfa(pay.amount)}</div>
+        <div class="words" style="margin:0"><b>${capFirst(enLettres(pay.amount))} francs CFA</b></div>
+        <div>Pour : <b>${what}</b> de la réservation <b>${esc(b.ref)}</b> (${esc(room.name)}, ${dateRange(b)})</div>
+        <div>Mode de paiement : <b>${METHODS[pay.method] || pay.method}</b>${pay.reference ? " · Réf. " + esc(pay.reference) : ""}</div>
+      </div>
+      <div class="totals">
+        <div><span>Montant total de la réservation</span><span class="r">${fcfa(b.total)}</span></div>
+        <div><span>Total versé à ce jour</span><span class="r">${fcfa(before)}</span></div>
+        <div class="grand"><span>Reste à payer</span><span class="r">${fcfa(left)}</span></div>
+      </div>
+      ${left > 0 ? `<p style="margin:0">${esc(BILL.CONDITIONS || "")}</p>` : `<p style="margin:0"><b>Réservation entièrement réglée. Merci de votre confiance.</b></p>`}
+      <p style="margin:0">Fait à Abidjan, le ${dmy(pay.paid_on)}.</p>
+      ${signature}${footer}`;
+  } else {
+    const per = room.per_person ? ` × ${b.persons} pers.` : "";
+    const lines = [`<tr><td><b>Location ${esc(room.name)}</b><small>${SLOTS[b.slot].fr} (${SLOTS[b.slot].hours}) · ${dateRange(b)}${room.per_person ? "" : b.persons > 1 ? " · " + b.persons + " personnes" : ""}</small></td>
+      <td class="r">${b.days}${per}</td><td class="r">${fcfa(b.unit_price)}</td><td class="r">${fcfa(b.room_amount)}</td></tr>`];
+    (b.extras || []).forEach(e => lines.push(`<tr><td>${esc(e.label)}</td><td class="r">1</td><td class="r">${fcfa(e.amount)}</td><td class="r">${fcfa(e.amount)}</td></tr>`));
+    if (Number(b.discount)) lines.push(`<tr><td>Remise</td><td class="r"></td><td class="r"></td><td class="r">− ${fcfa(b.discount)}</td></tr>`);
+    const paid = pays.filter(x => !x.voided_at);
+    body = `${header}
+      <div class="parties">${clientBox}${eventBox}</div>
+      <table><thead><tr><th>Désignation</th><th class="r">Qté</th><th class="r">Prix unitaire</th><th class="r">Montant</th></tr></thead><tbody>${lines.join("")}</tbody></table>
+      <div class="totals">
+        <div class="grand"><span>TOTAL</span><span class="r">${fcfa(b.total)}</span></div>
+        ${st.paid ? paid.map(x => `<div><span>Versé le ${dmy(x.paid_on)} (${METHODS[x.method] || x.method})</span><span class="r">− ${fcfa(x.amount)}</span></div>`).join("") + `<div class="due"><span>Reste à payer</span><span class="r">${fcfa(st.balance)}</span></div>`
+          : `<div><span>Acompte à la réservation (${BILL.DEPOSIT_PERCENT ?? 50} %)</span><span class="r">${fcfa(st.deposit)}</span></div><div><span>Solde avant l'occupation de la salle</span><span class="r">${fcfa(Number(b.total) - st.deposit)}</span></div>`}
+      </div>
+      <div class="words">Arrêtée la présente facture à la somme de : <b>${capFirst(enLettres(b.total))} francs CFA (${fcfa(b.total)})</b>.</div>
+      <div class="cols">
+        <div class="box"><h3>Modalités de paiement</h3>${esc(BILL.CONDITIONS || "")}<ul>${(BILL.PAYMENT_METHODS || []).map(m => "<li>" + esc(m) + "</li>").join("")}</ul></div>
+        <div class="box"><h3>${isEvent ? "Mis à disposition" : "Horaires"}</h3>${isEvent ? `<ul>${(BILL.INCLUDED || []).map(m => "<li>" + esc(m) + "</li>").join("")}</ul><small style="color:var(--muted)">${esc(BILL.NOTE || "")}</small>` : ""}
+          <div style="margin-top:6px">Demi-journée : 09h30 – 13h30 ou 14h00 – 18h00<br>Journée : 09h30 – 18h00</div></div>
+      </div>
+      ${signature}${footer}`;
+  }
+  document.getElementById("app").innerHTML = `<div class="bar">
+      <button class="main" type="button" id="print">Imprimer / Enregistrer en PDF</button>
+      ${b.client_phone ? `<a href="${wa(b, st, pay, number)}" target="_blank" rel="noopener">Envoyer par WhatsApp</a>` : ""}
+      <a href="bookings.html#${encodeURIComponent(b.ref)}">Retour aux réservations</a></div>
+    <div class="sheet">${body}</div>`;
+}
+
+function wa(b, st, pay, number) {
+  let ph = digits(b.client_phone); if (ph.length === 10) ph = "225" + ph;
+  const msg = pay
+    ? `Bonjour ${b.client_name},\n\nNous confirmons la réception de votre paiement de ${fcfa(pay.amount)} pour la réservation ${b.ref}. Vous trouverez le reçu n° ${number} en pièce jointe.\n\nReste à payer : ${fcfa(st.balance)}.\n\nMerci de votre confiance.\nJacobleu Art Gallery`
+    : `Bonjour ${b.client_name},\n\nVeuillez trouver ci-joint la facture n° ${number} pour votre réservation à Jacobleu Art Gallery.\n\nMontant total : ${fcfa(b.total)}\n${st.paid ? "Reste à payer : " + fcfa(st.balance) : "Acompte de " + (BILL.DEPOSIT_PERCENT ?? 50) + " % pour confirmer : " + fcfa(st.deposit)}\n\nMerci de votre confiance.\nJacobleu Art Gallery`;
+  return "https://wa.me/" + ph + "?text=" + encodeURIComponent(msg.replace(/ /g, " "));
+}
+
+document.addEventListener("click", e => { if (e.target.id === "print") window.print(); });
+main();
+</script>
+</body>
+</html>
