@@ -70,7 +70,8 @@ async function load() {
         fetchAll(() => sb.from("bookings").select("*").order("start_date")),
         fetchAll(() => sb.from("payments").select("*").order("id"))
       ]);
-      S.BK = { rooms: r.data, bookings: bk.map(b => ({ ...b, total: Number(b.total) })), payments: pay };
+      const cl = await sb.from("clients").select("*").order("id");
+      S.BK = { rooms: r.data, bookings: bk.map(b => ({ ...b, total: Number(b.total) })), payments: pay, clients: cl.error ? [] : cl.data };
     } catch (e) { S.BK = null; }
   }
   S.ready = true; render();
@@ -200,6 +201,7 @@ function bookingsSection(start, today) {
   const next = live.filter(b => b.start_date >= todayISO && b.start_date <= in30);
   const per = rooms.map(r => ({ r, v: inRange.filter(b => b.room_id === r.id).reduce((a, b) => a + b.total, 0) }));
   const pmax = Math.max(1, ...per.map(x => x.v));
+  const top = (S.BK.clients || []).map(c => ({ c, st: clientStats(c, bookings, payments) })).filter(x => x.st.count).sort((a, b) => b.st.total - a.st.total).slice(0, 6);
   const dueRows = due.sort((a, b) => a.b.start_date < b.b.start_date ? -1 : 1).slice(0, 8);
   return `<div class="card" style="margin-bottom:20px">
     <div class="tools"><div><h3>${t("bkTitle")}</h3><p class="sub" style="margin:0">${t("bkSub")}</p></div><a class="btn ghost" style="text-decoration:none;padding:8px 14px;font-size:13px" href="bookings.html">${t("openBookings")}</a></div>
@@ -214,7 +216,10 @@ function bookingsSection(start, today) {
         ${dueRows.length ? `<div class="rows">${dueRows.map(({ b, st }) => `<div><span><a href="bookings.html#${encodeURIComponent(b.ref)}" style="color:var(--ink)">${esc(b.client_org || b.client_name)}</a><span class="small"> · ${dmy(b.start_date)} · <span class="pill ${st.key}" style="font-size:11px;padding:1px 8px">${t("st_" + st.key)}</span></span></span><span class="num">${fcfa(st.balance)}</span></div>`).join("")}</div>` : `<p class="small">${t("noBookings")}</p>`}</div>
       <div><h3 style="font-size:15px;margin-bottom:10px">${t("byRoom")}</h3>
         <div class="hbars">${per.map(x => `<div class="hbar" style="grid-template-columns:minmax(0,130px) minmax(0,1fr) 96px"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(x.r.name.replace(/ \(.*\)/, ""))}</span><div class="t"><i style="width:${x.v / pmax * 100}%"></i></div><span class="n">${num(x.v)}</span></div>`).join("")}</div></div>
-    </div></div>`;
+    </div>
+    ${top.length ? `<div style="margin-top:18px"><div class="tools" style="margin-bottom:6px"><div><h3 style="font-size:15px">${t("topClients")}</h3><p class="sub" style="margin:0">${t("topClientsSub")}</p></div><a class="btn ghost" style="text-decoration:none;padding:8px 14px;font-size:13px" href="clients.html">${t("clients")}</a></div>
+      <div class="rows">${top.map(({ c, st }) => `<div><span><a href="clients.html#c${c.id}" style="color:var(--ink)">${esc(c.org || c.name)}</a><span class="small"> · ${nBook(st.count)} · ${st.months} ${LANG === "en" ? "month(s)" : "mois"} · <span class="pill ${st.tag}" style="font-size:11px;padding:1px 8px">${t("t_" + st.tag)}</span></span></span><span class="num">${fcfa(st.total)}</span></div>`).join("")}</div></div>` : ""}
+    </div>`;
 }
 
 function csvAll() {

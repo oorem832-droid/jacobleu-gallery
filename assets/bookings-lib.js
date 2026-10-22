@@ -105,3 +105,26 @@ async function fetchAllRows(build) {
 
 // Clean a database error message for staff ("Déjà réservé : …")
 const dbError = e => (e && e.message ? e.message.replace(/^.*?ERROR:\s*/, "") : t("netErr"));
+
+// Client history: how many bookings, in how many different months, how much
+function clientStats(c, bookings, payments) {
+  const todayS = isoDate(new Date());
+  const bks = bookings.filter(b => b.client_id === c.id && !b.cancelled_at).sort((a, b) => a.start_date < b.start_date ? -1 : 1);
+  const months = new Set(bks.map(b => b.start_date.slice(0, 7)));
+  const total = bks.reduce((a, b) => a + Number(b.total), 0);
+  const paid = payments.filter(p => !p.voided_at && bks.some(b => b.id === p.booking_id)).reduce((a, p) => a + Number(p.amount), 0);
+  const past = bks.filter(b => b.start_date <= todayS), future = bks.filter(b => b.start_date > todayS);
+  const roomCount = {}; bks.forEach(b => roomCount[b.room_id] = (roomCount[b.room_id] || 0) + 1);
+  const fav = Object.entries(roomCount).sort((a, b) => b[1] - a[1])[0];
+  const n = bks.length;
+  const tag = n === 0 ? "none" : (n >= 3 || months.size >= 3) ? "loyal" : n === 2 ? "back" : "new";
+  return {
+    bookings: bks, count: n, months: months.size, monthSet: months, total, paid, balance: Math.max(total - paid, 0),
+    first: bks[0] ? bks[0].start_date : null,
+    last: past.length ? past[past.length - 1].start_date : null,
+    next: future.length ? future[0].start_date : null,
+    lastAny: bks.length ? bks[bks.length - 1].start_date : null,
+    fav: fav ? fav[0] : null, tag
+  };
+}
+const nBook = n => n + (LANG === "en" ? (n === 1 ? " booking" : " bookings") : (n === 1 ? " réservation" : " réservations"));

@@ -38,8 +38,13 @@
 // Printable poster for the entrance. The QR code opens the visitor sign-in page.
 const target = CFG.CHECKIN_URL || new URL("./", location.href).href;
 
+let S = { ready: false, session: null, me: null };
 window.render = function () {
   $("#hdr").innerHTML = header("poster");
+  if (!CONFIGURED) return $("#app").innerHTML = setupNotice();
+  if (!S.ready) return $("#app").innerHTML = `<div class="loading">${t("loading")}</div>`;
+  if (!S.session) return $("#app").innerHTML = `<section class="view">${loginForm("mLoginSub")}</section>`;
+  if (!S.me || S.me.role !== "manager") return $("#app").innerHTML = `<section class="view"><div class="card locked"><h2 style="font-size:24px">${t("lockT")}</h2><p class="sub" style="margin:0">${t("notManager")}</p><a class="btn ghost" style="text-decoration:none" href="staff.html">${t("goStaff")}</a></div></section>`;
   $("#app").innerHTML = `
     <div class="no-print" style="display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between;padding-top:18px">
       <p class="small" style="margin:0">${t("posterHelp")} <span class="num" style="color:var(--ink)">${esc(target)}</span></p>
@@ -55,7 +60,10 @@ window.render = function () {
   new QRCode($("#qr"), { text: target, width: 272, height: 272, colorDark: "#13151C", colorLight: "#FFFFFF", correctLevel: QRCode.CorrectLevel.M });
 };
 document.addEventListener("click", e => { if (e.target.id === "print") window.print(); });
+document.addEventListener("submit", async e => { if (e.target.id === "login" && await doLogin(e)) { S.ready = false; render(); load(); } });
+async function load() { Object.assign(S, await myProfile()); S.ready = true; render(); }
 render();
+if (CONFIGURED) load();
 </script>
 </body>
 </html>

@@ -1,0 +1,215 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Jacobleu · Clients</title>
+<meta name="robots" content="noindex">
+<link rel="icon" type="image/png" href="assets/favicon.png">
+<link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#13151C">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Jacobleu">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..900&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<div class="wrap">
+  <div id="hdr"></div>
+  <main id="app"><div class="loading">…</div></main>
+</div>
+<div id="drawer-root"></div>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<script src="assets/config.js"></script>
+<script src="assets/i18n.js"></script>
+<script src="assets/common.js"></script>
+<script src="assets/bookings-lib.js"></script>
+<script>
+// Client file: everyone who has booked a room, with their history.
+const todayISO = isoDate(new Date());
+let S = { ready: false, session: null, me: null, missing: false, err: "",
+  clients: [], bookings: [], payments: [], rooms: [], filter: "all", sort: "last", q: "", panel: null, limit: 60 };
+
+async function load() {
+  Object.assign(S, await myProfile());
+  if (S.me) {
+    try {
+      const c = await sb.from("clients").select("*").order("id");
+      if (c.error) throw c.error;
+      const [bk, pay, rm] = await Promise.all([
+        fetchAllRows(() => sb.from("bookings").select("*").order("start_date")),
+        fetchAllRows(() => sb.from("payments").select("*").order("id")),
+        sb.from("rooms").select("*").order("sort").then(r => { if (r.error) throw r.error; return r.data; })
+      ]);
+      S.clients = c.data; S.bookings = bk.map(b => ({ ...b, total: Number(b.total) })); S.payments = pay; S.rooms = rm;
+      S.stats = new Map(S.clients.map(x => [x.id, clientStats(x, S.bookings, S.payments)]));
+      S.missing = false; S.err = "";
+    } catch (e) {
+      if (e && (e.code === "42P01" || e.code === "PGRST205" || /does not exist|schema cache/i.test(e.message || ""))) S.missing = true;
+      else S.err = t("netErr");
+    }
+  }
+  S.ready = true; render();
+  const h = location.hash.slice(1);
+  if (/^c\d+$/.test(h) && !S.panel) openClient(+h.slice(1));
+}
+const roomName = id => (S.rooms.find(r => r.id === id) || { name: id }).name;
+const sixMonthsAgo = () => { const d = new Date(); d.setMonth(d.getMonth() - 6); return isoDate(d); };
+
+window.render = function () {
+  $("#hdr").innerHTML = header("clients");
+  const app = $("#app");
+  if (!CONFIGURED) return app.innerHTML = setupNotice();
+  if (!S.ready) return app.innerHTML = `<div class="loading">${t("loading")}</div>`;
+  if (!S.session) return app.innerHTML = `<section class="view">${loginForm("sLoginSub")}</section>`;
+  if (!S.me) return app.innerHTML = `<section class="view"><div class="card locked"><p>${t("notStaff")}</p></div></section>`;
+  if (S.missing) return app.innerHTML = `<div class="notice">${t("needBookingsSql")}</div>`;
+  if (S.err) return app.innerHTML = `<div class="notice">${S.err}</div>`;
+
+  const all = S.clients.map(c => ({ c, st: S.stats.get(c.id) }));
+  const withB = all.filter(x => x.st.count > 0);
+  const loyal = all.filter(x => x.st.tag === "loyal").length;
+  const ret = withB.length ? Math.round(withB.filter(x => x.st.count > 1).length / withB.length * 100) : 0;
+  let L = all;
+  if (S.filter === "loyal") L = L.filter(x => x.st.tag === "loyal");
+  if (S.filter === "back") L = L.filter(x => x.st.count >= 2);
+  if (S.filter === "due") L = L.filter(x => x.st.balance > 0);
+  if (S.filter === "idle") L = L.filter(x => x.st.lastAny && x.st.lastAny < sixMonthsAgo());
+  const q = S.q.toLowerCase().trim(), qd = digits(q);
+  if (q) L = L.filter(x => [x.c.name, x.c.org, x.c.email].join(" ").toLowerCase().includes(q) || (qd.length > 3 && (x.c.phone || "").includes(qd)));
+  const by = { last: (a, b) => (b.st.lastAny || "") < (a.st.lastAny || "") ? -1 : 1, count: (a, b) => b.st.count - a.st.count || b.st.total - a.st.total,
+    amount: (a, b) => b.st.total - a.st.total, name: (a, b) => (a.c.org || a.c.name).localeCompare(b.c.org || b.c.name, "fr") };
+  L = L.slice().sort(by[S.sort]);
+
+  app.innerHTML = `<section class="view">
+    <div class="bk-bar"><div><div class="eyebrow">${t("clients")} · Jacobleu Art Gallery</div><h2 style="font-size:clamp(24px,4vw,34px);font-weight:900">${t("clientsTitle")}</h2>
+      <p class="small" style="margin:6px 0 0;max-width:62ch">${t("clientsSub")}</p></div>
+      ${S.me.role === "manager" && S.clients.length ? `<button class="btn ghost" type="button" data-act="csv">${t("exportCsv")}</button>` : ""}</div>
+    <div class="csum"><span><b>${t("nClients", { n: S.clients.length })}</b></span><span>${t("nLoyal", { n: loyal })}</span><span>${t("retRate", { n: ret })}</span></div>
+    <div class="card">
+      <div class="tools"><div class="filters">${["all", "loyal", "back", "due", "idle"].map(f => `<button type="button" data-filter="${f}" aria-pressed="${S.filter === f}">${t("c_" + f)}</button>`).join("")}</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;width:min(100%,520px)">
+          <input id="c-q" type="text" placeholder="${t("searchC")}" value="${esc(S.q)}" style="flex:1 1 220px">
+          <select id="c-sort" aria-label="${t("sortBy")}" style="flex:0 1 200px">${["last", "count", "amount", "name"].map(k => `<option value="${k}" ${S.sort === k ? "selected" : ""}>${t("s_" + k)}</option>`).join("")}</select></div></div>
+      ${L.length ? `<div>${L.slice(0, S.limit).map(row).join("")}</div>${L.length > S.limit ? `<button class="btn ghost more" type="button" data-act="more">${t("showMore")} (${L.length - S.limit})</button>` : ""}`
+        : `<div class="empty">${S.clients.length ? t("noBookings") : t("noClients")}</div>`}
+    </div></section>`;
+  if (S.panel) drawer();
+};
+
+function row({ c, st }) {
+  return `<button class="c-row" type="button" data-open="${c.id}">
+    <span><b>${esc(c.org || c.name)}</b><span class="m"><br>${c.org ? esc(c.name) : esc(c.email || "")}</span></span>
+    <span class="hide-s num">${c.phone ? fmtPhone(c.phone) : "—"}<span class="m"><br>${nBook(st.count)} · ${st.months} ${LANG === "en" ? "month(s)" : "mois"}</span></span>
+    <span class="r hide-m">${fcfa(st.total)}${st.balance ? `<span class="m"><br>${t("balance")} ${fcfa(st.balance)}</span>` : ""}</span>
+    <span class="hide-s">${st.lastAny ? dmy(st.lastAny) : "—"}${st.next ? `<span class="m"><br>${t("cNext")} ${dmy(st.next)}</span>` : ""}</span>
+    <span><span class="pill ${st.tag}">${t("t_" + st.tag)}</span></span></button>`;
+}
+
+/* ---------------- drawer ---------------- */
+function openClient(id) { S.panel = { id, edit: false }; drawer(); }
+function closePanel() { S.panel = null; drawer(); if (location.hash) history.replaceState(null, "", location.pathname); }
+function drawer() {
+  const root = $("#drawer-root");
+  if (!S.panel) { root.innerHTML = ""; document.body.style.overflow = ""; return; }
+  const c = S.clients.find(x => x.id === S.panel.id); if (!c) { S.panel = null; root.innerHTML = ""; return; }
+  const st = S.stats.get(c.id);
+  document.body.style.overflow = "hidden";
+  // bookings per month, last 12 months
+  const months = []; const d0 = new Date(); d0.setDate(1);
+  for (let i = 11; i >= 0; i--) { const d = new Date(d0); d.setMonth(d.getMonth() - i); months.push(isoDate(d).slice(0, 7)); }
+  const per = months.map(m => st.bookings.filter(b => b.start_date.slice(0, 7) === m).length);
+  const pmax = Math.max(1, ...per);
+  const ML = LANG === "en" ? "JFMAMJJASOND" : "JFMAMJJASOND";
+  let ph = digits(c.phone);
+  const P = S.panel;
+  root.innerHTML = `<div class="backdrop" data-act="close"></div><aside class="drawer" role="dialog" aria-modal="true">
+    <div class="dhead"><div><div class="eyebrow">${t("clientFile")}${st.first ? " · " + t("cSince") + " " + dmy(st.first).slice(3) : ""}</div><h2>${esc(c.org || c.name)}</h2>
+      <div style="margin-top:6px"><span class="pill ${st.tag}">${t("t_" + st.tag)}</span></div></div>
+      <button class="iconbtn" type="button" data-act="close" aria-label="${t("close")}">✕</button></div>
+    ${P.edit ? `<form id="cform" novalidate style="display:grid;gap:12px">
+        <label for="e-name">${t("clientName")} *<input id="e-name" type="text" value="${esc(c.name)}"></label>
+        <label for="e-org">${t("clientOrg")}<input id="e-org" type="text" value="${esc(c.org || "")}"></label>
+        <div class="grid2"><label for="e-phone">${t("clientPhone")}<input id="e-phone" type="tel" inputmode="tel" value="${c.phone ? esc(fmtPhone(c.phone)) : ""}"></label>
+          <label for="e-email">${t("clientEmail")}<input id="e-email" type="email" value="${esc(c.email || "")}"></label></div>
+        <label for="e-notes">${t("clientNotes")}<textarea class="in" id="e-notes">${esc(c.notes || "")}</textarea></label>
+        <div class="err" id="cerr" role="alert"></div>
+        <div class="actions"><button class="btn" type="submit">${t("save")}</button><button class="btn ghost" type="button" data-act="noedit">${t("cancel")}</button></div>
+      </form>`
+    : `<dl class="kv">
+        ${c.org ? `<dt>${t("client")}</dt><dd>${esc(c.name)}</dd>` : ""}
+        <dt>${t("clientPhone")}</dt><dd class="num">${c.phone ? fmtPhone(c.phone) : "—"}</dd>
+        <dt>${t("clientEmail")}</dt><dd>${esc(c.email || "—")}</dd>
+        ${st.fav ? `<dt>${t("cFav")}</dt><dd>${esc(roomName(st.fav))}</dd>` : ""}
+        ${st.next ? `<dt>${t("cNext")}</dt><dd>${dmy(st.next)}</dd>` : ""}
+        ${c.notes ? `<dt>${t("notes")}</dt><dd>${esc(c.notes)}</dd>` : ""}
+      </dl>
+      <div class="actions">
+        <a class="btn" href="bookings.html?client=${c.id}">${t("bookForClient")}</a>
+        ${ph ? `<a class="btn ghost" href="https://wa.me/${ph}" target="_blank" rel="noopener">WhatsApp</a>` : ""}
+        <button class="btn ghost" type="button" data-act="edit">${t("editClient")}</button>
+      </div>`}
+    <div class="stats4">
+      <div><span>${t("cBookings")}</span><b>${st.count}</b></div>
+      <div><span>${t("cMonths")}</span><b>${st.months}</b></div>
+      <div><span>${t("cAmount")}</span><b>${num(st.total)}</b></div>
+      <div><span>${t("cBalance")}</span><b>${num(st.balance)}</b></div>
+    </div>
+    <fieldset><legend>${t("byMonth")}</legend>
+      <div class="months">${months.map((m, i) => `<div title="${m.slice(5)}/${m.slice(0, 4)} · ${per[i]}">${per[i] ? `<em>${per[i]}</em>` : ""}<i class="${per[i] ? "" : "zero"}" style="height:${per[i] ? Math.max(12, per[i] / pmax * 62) : 2}px"></i><small>${ML[+m.slice(5) - 1]}</small></div>`).join("")}</div>
+    </fieldset>
+    <fieldset><legend>${t("history")}</legend>
+      ${st.bookings.length || S.bookings.some(b => b.client_id === c.id) ? `<div class="hist">${S.bookings.filter(b => b.client_id === c.id).slice().reverse().map(b => { const bs = bookingState(b, S.payments); return `<a href="bookings.html#${encodeURIComponent(b.ref)}">
+        <span><b>${dateRange(b)}</b> · ${esc(roomName(b.room_id))}<span class="m"><br>${esc(b.ref)}${b.event_title ? " · " + esc(b.event_title) : ""}</span></span>
+        <span style="text-align:right"><span class="num">${fcfa(b.total)}</span><br><span class="pill ${bs.key}" style="font-size:11px;padding:1px 8px">${t("st_" + bs.key)}</span></span></a>`; }).join("")}</div>`
+      : `<p class="small" style="margin:0">${t("noHistory")}</p>`}
+    </fieldset></aside>`;
+}
+
+document.addEventListener("click", e => {
+  const el = e.target;
+  const f = el.closest("[data-filter]"); if (f) { S.filter = f.dataset.filter; S.limit = 60; render(); return; }
+  const o = el.closest("[data-open]"); if (o) { openClient(+o.dataset.open); return; }
+  const a = el.closest("[data-act]"); if (!a) return;
+  const act = a.dataset.act;
+  if (act === "close") closePanel();
+  if (act === "edit") { S.panel.edit = true; drawer(); $("#e-name").focus(); }
+  if (act === "noedit") { S.panel.edit = false; drawer(); }
+  if (act === "more") { S.limit += 60; render(); }
+  if (act === "csv") {
+    const q = x => '"' + String(x ?? "").replace(/"/g, '""') + '"';
+    const rows = S.clients.map(c => { const st = S.stats.get(c.id); return [c.name, c.org, c.phone ? "+" + c.phone : "", c.email, st.count, st.months, st.total, st.paid, st.balance, st.first, st.lastAny, t("t_" + st.tag), c.notes].map(q).join(","); });
+    const csv = "﻿nom,entreprise,telephone,email,reservations,mois_differents,montant_total,paye,reste_a_payer,premiere,derniere,profil,notes\n" + rows.join("\n");
+    const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+    const l = document.createElement("a"); l.href = url; l.download = "jacobleu-clients-" + todayISO + ".csv"; document.body.appendChild(l); l.click(); l.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 2000);
+  }
+});
+document.addEventListener("input", e => {
+  if (e.target.id === "c-q") { S.q = e.target.value; S.limit = 60; const pos = e.target.selectionStart; render(); const i = $("#c-q"); i.focus(); i.setSelectionRange(pos, pos); }
+});
+document.addEventListener("change", e => { if (e.target.id === "c-sort") { S.sort = e.target.value; render(); } });
+document.addEventListener("submit", async e => {
+  if (e.target.id === "login") { e.preventDefault(); if (await doLogin(e)) { S.ready = false; render(); load(); } return; }
+  if (e.target.id === "cform") {
+    e.preventDefault();
+    const name = $("#e-name").value.trim();
+    if (name.length < 2) { $("#cerr").textContent = t("errName"); return; }
+    const { error } = await sb.rpc("update_client", { p_id: S.panel.id, p_name: name, p_org: $("#e-org").value, p_phone: $("#e-phone").value, p_email: $("#e-email").value, p_notes: $("#e-notes").value });
+    if (error) { $("#cerr").textContent = dbError(error); return; }
+    toast(t("clientSaved"));
+    const id = S.panel.id; await load(); S.panel = { id, edit: false }; drawer();
+  }
+});
+document.addEventListener("keydown", e => { if (e.key === "Escape" && S.panel) closePanel(); });
+
+render();
+if (CONFIGURED) load();
+</script>
+</body>
+</html>

@@ -24,16 +24,20 @@ function toast(m) {
 
 // Page header. `links` = show the staff/manager navigation.
 function header(active, links = true) {
+  // Staff see Personnel + Réservations only. Direction and the QR poster are for the owner.
+  const isMgr = window.ROLE === "manager";
   const nav = links ? `<nav class="topnav">
       <a href="staff.html" ${active === "staff" ? 'aria-current="page"' : ""}>${t("staff")}</a>
       <a href="bookings.html" ${active === "bookings" ? 'aria-current="page"' : ""}>${t("bookings")}</a>
-      <a href="admin.html" ${active === "admin" ? 'aria-current="page"' : ""}>${t("manager")}</a>
-      <a href="poster.html" ${active === "poster" ? 'aria-current="page"' : ""}>${t("poster")}</a></nav>` : "";
+      <a href="clients.html" ${active === "clients" ? 'aria-current="page"' : ""}>${t("clients")}</a>
+      ${isMgr ? `<a href="admin.html" ${active === "admin" ? 'aria-current="page"' : ""}>${t("manager")}</a>
+      <a href="poster.html" ${active === "poster" ? 'aria-current="page"' : ""}>${t("poster")}</a>` : ""}</nav>` : "";
   // On phones the same links become a tab bar at the bottom of the screen
   const I = {
     staff: '<path d="M12 7v5l3 2"/><circle cx="12" cy="12" r="9"/>',
     bookings: '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/>',
     admin: '<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>',
+    clients: '<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c0-3.6 2.9-6 6.5-6s6.5 2.4 6.5 6"/><path d="M16 4.5a3.5 3.5 0 0 1 0 7M18 14.3c2.1.7 3.5 2.8 3.5 5.7"/>',
     poster: '<rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><path d="M14 14h3v3h-3zM18 18h3v3h-3z"/>'
   };
   const tab = (href, key, label) => `<a href="${href}" ${active === key ? 'aria-current="page"' : ""}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${I[key]}</svg><span>${label}</span></a>`;
@@ -42,7 +46,8 @@ function header(active, links = true) {
     document.body.classList.add("has-tabbar");
   }
   const tb = document.getElementById("tabbar");
-  if (tb) tb.innerHTML = tab("staff.html", "staff", t("staff")) + tab("bookings.html", "bookings", t("bookings")) + tab("admin.html", "admin", t("manager")) + tab("poster.html", "poster", t("poster"));
+  if (tb) tb.innerHTML = tab("staff.html", "staff", t("staff")) + tab("bookings.html", "bookings", t("bookings")) + tab("clients.html", "clients", t("clients")) + (isMgr ? tab("admin.html", "admin", t("manager")) + tab("poster.html", "poster", t("poster")) : "");
+  if (tb) tb.style.gridTemplateColumns = `repeat(${isMgr ? 5 : 3},1fr)`;
   return `<header>
     <div class="brand"><div class="mark" aria-hidden="true"><span><i></i><i></i><i></i></span></div>
       <div><b>JACOBLEU</b><small>Art Gallery · Abidjan Plateau</small></div></div>
@@ -84,6 +89,7 @@ async function myProfile() {
   const { data: { session } } = await sb.auth.getSession();
   if (!session) return { session: null, me: null };
   const { data } = await sb.from("staff").select("*").eq("id", session.user.id).maybeSingle();
+  window.ROLE = data && data.active ? data.role : null;   // shows or hides the manager tabs
   return { session, me: data };
 }
 

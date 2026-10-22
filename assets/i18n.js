@@ -47,7 +47,7 @@ Object.assign(window.T.fr,{
   checkin:"Accueil",poster:"Affiche QR",
   email:"Email",password:"Mot de passe",signIn:"Se connecter",wrongLogin:"Email ou mot de passe incorrect.",
   notStaff:"Ce compte n'est pas encore enregistré comme membre du personnel. Demandez au gérant de l'ajouter.",
-  notManager:"Cette page est réservée au gérant.",goStaff:"Aller à mon espace personnel",goAdmin:"Tableau de bord",
+  notManager:"Cette page est réservée à la direction (propriétaire de la galerie).",goStaff:"Aller à mon espace personnel",goAdmin:"Tableau de bord",
   loading:"Chargement…",netErr:"Connexion impossible. Vérifiez internet et réessayez.",
   setup:"Le site n'est pas encore relié à Supabase. Renseignez l'adresse et la clé dans assets/config.js.",
   refresh:"Actualiser",updated:"Mis à jour à {t}",downloadCsv:"Télécharger le CSV",
@@ -62,7 +62,7 @@ Object.assign(window.T.en,{
   checkin:"Entrance",poster:"QR poster",
   email:"Email",password:"Password",signIn:"Sign in",wrongLogin:"Wrong email or password.",
   notStaff:"This account is not registered as staff yet. Ask the manager to add it.",
-  notManager:"This page is for the manager only.",goStaff:"Go to my staff area",goAdmin:"Dashboard",
+  notManager:"This page is for the gallery owner only.",goStaff:"Go to my staff area",goAdmin:"Dashboard",
   loading:"Loading…",netErr:"Could not connect. Check the internet connection and try again.",
   setup:"The site is not connected to Supabase yet. Fill in the address and key in assets/config.js.",
   refresh:"Refresh",updated:"Updated at {t}",downloadCsv:"Download CSV",
@@ -152,4 +152,38 @@ Object.assign(window.T.en,{
   kCollected:"Collected",kBooked:"Booked",kBookedSub:"{n} booking(s) in the period",kDue:"Still to collect",kDueSub:"on {n} booking(s)",kNext:"Next 30 days",kNextSub:"confirmed or pending bookings",
   byRoom:"Amount booked per room",dueList:"Balances to collect",openBookings:"Open bookings",
   waRecap:"Bonjour {n},\n\nVoici le récapitulatif de votre réservation à Jacobleu Art Gallery :\n• Réf. : {ref}\n• Salle : {room}\n• Date : {dates}\n• Créneau : {slot}\n• Montant total : {total}\n{payline}\n\nModes de paiement :\n{methods}\n\n{cond}\n\nMerci de votre confiance.\nJacobleu Art Gallery"
+});
+
+// Clients
+Object.assign(window.T.fr,{
+  clients:"Clients",clientsTitle:"Fichier clients",clientsSub:"Toutes les personnes et entreprises qui ont réservé une salle. Un client est reconnu par son téléphone, puis son email.",
+  searchC:"Rechercher un nom, une entreprise, un téléphone…",
+  c_all:"Tous",c_loyal:"Fidèles",c_back:"Reviennent",c_due:"Avec solde",c_idle:"Inactifs (+6 mois)",
+  sortBy:"Trier par",s_last:"Dernière réservation",s_count:"Nombre de réservations",s_amount:"Montant",s_name:"Nom",
+  t_new:"Nouveau",t_back:"Revient",t_loyal:"Fidèle",t_none:"Sans réservation",
+  nClients:"{n} clients",nLoyal:"{n} fidèles",retRate:"{n} % reviennent",
+  cBookings:"Réservations",cMonths:"Mois différents",cAmount:"Montant total",cBalance:"Reste à payer",
+  cLast:"Dernière",cNext:"Prochaine",cFav:"Salle préférée",cSince:"Client depuis",
+  byMonth:"Réservations par mois (12 derniers mois)",history:"Historique",noHistory:"Aucune réservation.",
+  bookForClient:"Nouvelle réservation pour ce client",editClient:"Modifier la fiche",clientSaved:"Fiche client enregistrée",
+  clientNotes:"Notes sur le client",exportCsv:"Exporter (CSV)",
+  existingClient:"Client existant · {n} réservation(s)",changeClient:"Ce n'est pas ce client",suggestions:"Clients déjà enregistrés",clientFile:"Fiche client",
+  topClients:"Meilleurs clients",topClientsSub:"Classés par montant réservé, toutes périodes.",
+  noClients:"Aucun client pour le moment. Les clients sont créés automatiquement à chaque réservation."
+});
+Object.assign(window.T.en,{
+  clients:"Clients",clientsTitle:"Client list",clientsSub:"Everyone who has booked a room. A client is recognised by phone number, then email.",
+  searchC:"Search a name, company, phone…",
+  c_all:"All",c_loyal:"Loyal",c_back:"Returning",c_due:"Money due",c_idle:"Inactive (6+ months)",
+  sortBy:"Sort by",s_last:"Latest booking",s_count:"Number of bookings",s_amount:"Amount",s_name:"Name",
+  t_new:"New",t_back:"Returning",t_loyal:"Loyal",t_none:"No booking",
+  nClients:"{n} clients",nLoyal:"{n} loyal",retRate:"{n}% come back",
+  cBookings:"Bookings",cMonths:"Different months",cAmount:"Total amount",cBalance:"Balance due",
+  cLast:"Latest",cNext:"Next",cFav:"Favourite room",cSince:"Client since",
+  byMonth:"Bookings per month (last 12 months)",history:"History",noHistory:"No bookings.",
+  bookForClient:"New booking for this client",editClient:"Edit details",clientSaved:"Client saved",
+  clientNotes:"Notes about the client",exportCsv:"Export (CSV)",
+  existingClient:"Existing client · {n} booking(s)",changeClient:"Not this client",suggestions:"Clients already on file",clientFile:"Client file",
+  topClients:"Best clients",topClientsSub:"Ranked by amount booked, all time.",
+  noClients:"No clients yet. Clients are created automatically with each booking."
 });

@@ -36,7 +36,7 @@ const mondayOf = s => { const d = parseD(s); d.setDate(d.getDate() - ((d.getDay(
 
 let S = {
   ready: false, session: null, me: null, missing: false, err: "",
-  rooms: [], bookings: [], payments: [],
+  rooms: [], bookings: [], payments: [], clients: [],
   week: mondayOf(todayISO), day: todayISO, filter: "upcoming", q: "",
   panel: null,        // {mode:'view'|'form', id, F (form draft), busy, confirmCancel, confirmVoid, payF}
 };
@@ -52,6 +52,8 @@ async function load() {
         fetchAllRows(() => sb.from("payments").select("*").order("id"))
       ]);
       S.rooms = r.data; S.bookings = bk.map(b => ({ ...b, total: Number(b.total) })); S.payments = pay;
+      const cl = await sb.from("clients").select("*").order("id");
+      S.clients = cl.error ? [] : cl.data;
       S.missing = false; S.err = "";
     } catch (e) {
       if (e && (e.code === "42P01" || e.code === "PGRST205" || /does not exist|schema cache/i.test(e.message || ""))) S.missing = true;
@@ -63,6 +65,36 @@ async function load() {
   // bookings.html#JAG-2026-0001 opens that booking
   const h = decodeURIComponent(location.hash.slice(1));
   if (h && !S.panel) { const b = S.bookings.find(x => x.ref === h); if (b) openView(b.id); }
+  // bookings.html?client=12 opens a new booking for that client (from the Clients page)
+  const cid = +new URLSearchParams(location.search).get("client");
+  if (cid && !S.panel && S.me) {
+    const c = S.clients.find(x => x.id === cid);
+    if (c) { openNew(); pickClient(c); history.replaceState(null, "", location.pathname); }
+  }
+}
+
+// ---- client picker in the booking form
+const clientCount = id => S.bookings.filter(b => b.client_id === id && !b.cancelled_at).length;
+function pickClient(c) {
+  const F = S.panel.F;
+  Object.assign(F, { client_id: c.id, client_name: c.name, client_org: c.org || "", client_phone: c.phone ? fmtPhone(c.phone) : "", client_email: c.email || "" });
+  drawer(); $("#b-event")?.focus();
+}
+function clientMatches(F) {
+  if (F.client_id || !S.clients.length) return [];
+  const q = [F.client_name, F.client_org].join(" ").toLowerCase().trim(), qd = digits(F.client_phone);
+  if (q.length < 2 && qd.length < 4) return [];
+  const words = q.split(/\s+/).filter(w => w.length > 1);
+  return S.clients.filter(c => {
+    const hay = [c.name, c.org, c.email].join(" ").toLowerCase();
+    return (words.length && words.every(w => hay.includes(w))) || (qd.length >= 4 && (c.phone || "").includes(qd.replace(/^0/, "")));
+  }).sort((a, b) => clientCount(b.id) - clientCount(a.id)).slice(0, 5);
+}
+function updateSuggest() {
+  const box = $("#csugg"); if (!box) return;
+  const F = S.panel.F, m = clientMatches(F);
+  box.innerHTML = F.client_id ? `<div class="cbadge"><span>${t("existingClient", { n: clientCount(F.client_id) })}</span><button type="button" data-act="unpick">${t("changeClient")}</button></div>`
+    : m.length ? `<div class="csugg"><span>${t("suggestions")}</span>${m.map(c => `<button type="button" data-pick="${c.id}"><span><b>${esc(c.org || c.name)}</b>${c.org ? " · " + esc(c.name) : ""}<br><small>${c.phone ? fmtPhone(c.phone) : esc(c.email || "")}</small></span><small>${nBook(clientCount(c.id))}</small></button>`).join("")}</div>` : "";
 }
 
 const room = id => S.rooms.find(r => r.id === id);
@@ -206,12 +238,12 @@ function drawer() {
   if (!S.panel) { root.innerHTML = ""; document.body.style.overflow = ""; return; }
   document.body.style.overflow = "hidden";
   root.innerHTML = `<div class="backdrop" data-act="close"></div><aside class="drawer" role="dialog" aria-modal="true">${S.panel.mode === "form" ? formView() : detailView()}</aside>`;
-  if (S.panel.mode === "form") updateQuote();
+  if (S.panel.mode === "form") { updateQuote(); updateSuggest(); }
 }
 function closePanel() { S.panel = null; drawer(); if (location.hash) history.replaceState(null, "", location.pathname); }
 
 function emptyDraft(roomId, date, slot) {
-  return { id: null, client_name: "", client_org: "", client_phone: "", client_email: "", event_title: "",
+  return { id: null, client_id: null, client_name: "", client_org: "", client_phone: "", client_email: "", event_title: "",
     room_id: roomId || (S.rooms[0] && S.rooms[0].id), start_date: date || todayISO, end_date: date || todayISO,
     slot: slot || "day", persons: 1, extras: [], discount: 0, notes: "" };
 }
@@ -240,6 +272,7 @@ function formView() {
           <label for="b-phone">${t("clientPhone")}<input id="b-phone" data-f="client_phone" type="tel" inputmode="tel" value="${esc(F.client_phone || "")}" placeholder="07 00 00 00 00"></label>
           <label for="b-email">${t("clientEmail")}<input id="b-email" data-f="client_email" type="email" value="${esc(F.client_email || "")}"></label>
         </div>
+        <div id="csugg"></div>
         <label for="b-event">${t("eventTitle")}<input id="b-event" data-f="event_title" type="text" value="${esc(F.event_title || "")}" placeholder="Séminaire, vernissage, formation…"></label>
       </fieldset>
       <fieldset><legend>${t("room")}</legend>
@@ -320,7 +353,7 @@ function detailView() {
       <div style="margin-top:6px"><span class="pill ${st.key}">${t("st_" + st.key)}</span></div></div>
       <button class="iconbtn" type="button" data-act="close" aria-label="${t("close")}">✕</button></div>
     <dl class="kv">
-      <dt>${t("client")}</dt><dd>${esc(b.client_name)}${b.client_org ? " · " + esc(b.client_org) : ""}</dd>
+      <dt>${t("client")}</dt><dd>${esc(b.client_name)}${b.client_org ? " · " + esc(b.client_org) : ""}${b.client_id ? `<br><a href="clients.html#c${b.client_id}" style="color:var(--bleu);font-size:13px">${t("clientFile")} · ${nBook(clientCount(b.client_id))}</a>` : ""}</dd>
       ${b.client_phone ? `<dt>${t("clientPhone")}</dt><dd class="num">${esc(b.client_phone)}</dd>` : ""}
       ${b.client_email ? `<dt>${t("clientEmail")}</dt><dd>${esc(b.client_email)}</dd>` : ""}
       ${b.event_title ? `<dt>${t("event")}</dt><dd>${esc(b.event_title)}</dd>` : ""}
@@ -391,6 +424,7 @@ document.addEventListener("click", async e => {
   if (wk) { const n = +wk.dataset.week; S.week = n ? addDays(S.week, n) : mondayOf(todayISO); S.day = n ? S.week : todayISO; render(); return; }
   const dy = el.closest("[data-day]"); if (dy) { S.day = dy.dataset.day; render(); return; }
   const fl = el.closest("[data-filter]"); if (fl) { S.filter = fl.dataset.filter; render(); return; }
+  const pk = el.closest("[data-pick]"); if (pk) { syncForm(); pickClient(S.clients.find(c => c.id === +pk.dataset.pick)); return; }
   const op = el.closest("[data-open]"); if (op) { openView(+op.dataset.open); return; }
   const sl = el.closest("[data-slot]"); if (sl) { const [r, d, h] = sl.dataset.slot.split("|"); openNew(r, d, h); return; }
   const xa = el.closest("[data-xadd]");
@@ -409,6 +443,7 @@ document.addEventListener("click", async e => {
   const act = a.dataset.act;
   if (act === "new") openNew();
   if (act === "close") closePanel();
+  if (act === "unpick") { syncForm(); S.panel.F.client_id = null; drawer(); $("#b-client")?.focus(); }
   if (act === "edit") openEdit(S.panel.id);
   if (act === "back") openView(S.panel.F.id);
   if (act === "askcancel") { S.panel.confirmCancel = true; drawer(); $("#c-reason")?.focus(); }
@@ -431,7 +466,7 @@ function syncForm() {
 }
 document.addEventListener("input", e => {
   if (e.target.id === "bk-q") { S.q = e.target.value; const pos = e.target.selectionStart; render(); const i = $("#bk-q"); i.focus(); i.setSelectionRange(pos, pos); return; }
-  if (e.target.closest("#bform")) { syncForm(); updateQuote(); }
+  if (e.target.closest("#bform")) { syncForm(); updateQuote(); if (/^b-(client|org|phone)$/.test(e.target.id)) updateSuggest(); }
 });
 document.addEventListener("change", e => {
   if (!e.target.closest("#bform")) return;
@@ -453,7 +488,7 @@ document.addEventListener("submit", async e => {
       p_id: F.id, p_client_name: F.client_name, p_client_org: F.client_org, p_client_phone: F.client_phone, p_client_email: F.client_email,
       p_event_title: F.event_title, p_room: F.room_id, p_start: F.start_date, p_end: F.end_date, p_slot: F.slot,
       p_persons: F.persons, p_extras: F.extras.map(x => ({ label: x.label, amount: String(parseInt(x.amount) || 0) })),
-      p_discount: F.discount, p_notes: F.notes
+      p_discount: F.discount, p_notes: F.notes, p_client_id: F.client_id || null
     });
     S.panel.busy = false;
     if (error) { drawer(); $("#berr").textContent = dbError(error); return; }

@@ -12,6 +12,7 @@ dashboard of visits, peak hours, busiest days, regular visitors and a WhatsApp l
 | `poster.html` | Manager | Printable A4/A3 poster with the QR code. |
 | `bookings.html` | Staff and manager | Room planning, bookings, payments, invoices. |
 | `doc.html` | Staff and manager | Printable invoice (facture / proforma) and receipt (reçu). |
+| `clients.html` | Staff and manager | Client file: every client, their bookings month by month, who comes back. |
 
 **How it fits together:** the pages are plain HTML files (no build step) hosted for free
 on Vercel from a GitHub repository. The data and the logins live in Supabase.
@@ -30,6 +31,8 @@ jacobleu-gallery/
 ├── poster.html         printable QR poster
 ├── bookings.html       room bookings (staff)
 ├── doc.html            invoice / receipt, print or save as PDF
+├── clients.html        client file and history
+├── manifest.webmanifest  lets staff install the site as an app
 ├── assets/
 │   ├── config.js       ← the only file you edit (Supabase address + key)
 │   ├── common.js       shared code
@@ -39,7 +42,7 @@ jacobleu-gallery/
 │   └── style.css       design
 └── supabase/
     ├── schema.sql      database tables + security rules (run once)
-    ├── bookings.sql    rooms, prices, bookings, payments (run once, after schema.sql)
+    ├── bookings.sql    rooms, prices, clients, bookings, payments (run after schema.sql; safe to run again)
     └── add-staff.sql   register the manager and staff accounts
 ```
 
@@ -214,6 +217,19 @@ themselves, so share the Channel link in your broadcast.
 - Each payment has its own **Reçu** (JAG-2026-0001-R1, R2…).
 - Invoice numbers are automatic: JAG-2026-0001, JAG-2026-0002…
 
+**Clients** (`…/clients.html`):
+
+- Every booking is linked to a client automatically. A returning client is recognised by
+  phone number (any format: 07 07 12 34 56, +225 0707123456…), then email, then name + company.
+- In the booking form, typing a name or phone shows "Clients déjà enregistrés": tap one to fill
+  in their details.
+- Each client file shows: number of bookings, number of different months, total amount,
+  balance due, favourite room, a bar chart of bookings per month over the last 12 months,
+  and the full history with links to each booking.
+- Profiles: *Nouveau* (1 booking), *Revient* (2), *Fidèle* (3 or more, or 3 different months).
+- Filters: Fidèles, Reviennent, Avec solde, Inactifs (no booking for 6 months, to call them back).
+- Jacob can export the client list as a CSV file; his dashboard shows the best clients.
+
 **What only Jacob can do:** cancel a payment entered by mistake, and change room prices
 (Supabase → Table Editor → `rooms` → edit `price_half` / `price_day`).
 His dashboard shows money collected, amount booked, balances still to collect, and revenue per room.
@@ -230,6 +246,19 @@ To put the Jacobleu icon on the home screen:
 
 It then opens full screen, straight on the staff page, with no address bar.
 Visitors don't need this: they just scan the QR code.
+
+## Who can see what
+
+| | Jacob (owner, `manager`) | Staff (`staff`) | Visitor (QR code) |
+|---|---|---|---|
+| Sign the visitor list | ✅ | ✅ | ✅ |
+| Clock in / out | ✅ | ✅ own hours only | ❌ |
+| Bookings, payments, invoices, clients | ✅ | ✅ | ❌ |
+| Visitors list, dashboard, revenue, staff hours | ✅ | ❌ | ❌ |
+| Cancel a payment, change prices, delete a visitor, export clients | ✅ | ❌ | ❌ |
+| QR poster | ✅ | ❌ | ❌ |
+
+These rules are enforced by the database (Row Level Security), not only by hiding buttons.
 
 ## Looking after it
 
